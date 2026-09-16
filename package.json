@@ -12,19 +12,18 @@
     "start": "node dist/server.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "agent": "tsx src/cli.ts"
+    "agent": "tsx src/cli.ts",
+    "vercel-build": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@google/genai": "^2.22.0",
-    "@fastify/static": "^10.1.3",
-    "better-sqlite3": "^13.0.3",
     "dotenv": "^17.4.2",
     "fastify": "^5.12.4",
     "imapflow": "^2.0.5",
-    "nodemailer": "^10.0.10"
+    "nodemailer": "^10.0.10",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.20.3",
     "tsx": "^4.23.13",
     "typescript": "^5.9.0"

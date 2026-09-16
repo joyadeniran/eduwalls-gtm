@@ -21,6 +21,59 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-09-16 — Ported to serverless, deployed to Vercel, added settings UI and auth
+**Commit:** `cad7850`  **Spec:** sections 1, 2 (new N9), 3, 4, 6a (new), 7, 8, 9
+
+Joy asked for a Vercel deployment. The v1 design could not run there: a local
+SQLite file, a `setInterval` engine and a long lived process all die on
+serverless. Deploying as built would have produced a URL that looked healthy and
+silently did nothing. So this is a port, not a config change.
+
+- **Storage is now Postgres** (`DATABASE_URL`, any provider). Every call site
+  became async. The schema is created lazily on first request, so there is no
+  migration step.
+- **The engine is driven by `POST /api/cron`**, guarded by `CRON_SECRET`. Vercel
+  Hobby allows one cron per day, so that endpoint runs ticks back to back until
+  the work runs out or it nears its time budget. Any external scheduler can call
+  the same URL more often. The in-process timer still exists for server mode.
+- **A Postgres lock (`engine_lock`) makes ticks non-overlapping across
+  processes.** In v1 the guard was an in-memory flag, which is worthless when
+  two serverless invocations run at once. Without this, two cron pings could
+  double send to the same school.
+- **New N9: the deployment is never open.** Production refuses to serve at all
+  without `DASHBOARD_PASSWORD`. The dashboard moved from `public/` into
+  `src/dashboard.ts` because a static directory on Vercel is served before the
+  app sees it, which would have put the page outside the gate.
+- **Settings UI**, which is what Joy asked for: sender details, Brevo or SMTP,
+  the IMAP mailbox, HubSpot and every guard rail are editable in the browser
+  with a Test connection button each. Resolution is settings table, then env,
+  then default. Secrets are encrypted at rest with `APP_SECRET`, masked in the
+  API, and a masked value submitted back never overwrites the stored secret.
+- **Readiness reporting**: the dashboard now states plainly what is not
+  connected, so a half configured deployment is obvious rather than silent.
+
+**Verified** against a real Postgres 16 (local cluster), dry run, dummy Gemini
+key: all three send transitions with correct follow up dates; the auth gate
+(401 on API, redirect on page, wrong password rejected, right password accepted);
+settings round trip and taking effect; `hubspotToken` stored as `enc:v1:...` and
+unreadable in the table; a masked resubmit leaving the stored secret intact;
+`/api/cron` rejecting an unauthenticated call and accepting the secret; two
+concurrent cron calls, where the second returned "another run is in progress";
+typecheck and build clean.
+
+**Unverified:** the Vercel cron actually firing on its schedule (needs elapsed
+time), and everything in spec.md section 9 that needs live credentials.
+
+**Follow-ups:**
+- Set the env vars, then use Settings to connect the mailbox and sender.
+- Hobby caps cron at once daily. For a tighter loop either point an external
+  scheduler at `/api/cron?secret=...` every few minutes, or upgrade to Pro and
+  change the schedule in `vercel.json`.
+- Deployed manually from local files because the work is on a feature branch,
+  not `main`. Merging to `main` and linking the repo would give deploy on push.
+
+---
+
 ## 2026-09-15 — Added spec.md, log.md and CLAUDE.md
 **Commit:** `12539ad`  **Spec:** created
 

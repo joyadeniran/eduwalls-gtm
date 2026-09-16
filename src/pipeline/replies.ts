@@ -1,8 +1,8 @@
 import { ImapFlow } from 'imapflow';
 import { generateJson } from '../gemini.js';
 import { COMPANY_CONTEXT } from '../brand.js';
-import { config } from '../config.js';
-import { getDb, kvGet, kvSet, logEvent, updateSchool, type SchoolRow, type SchoolStatus } from '../db.js';
+import { getSettings, imapConfiguredIn } from '../settings.js';
+import { sql, kvGet, kvSet, logEvent, updateSchool, type SchoolRow, type SchoolStatus } from '../db.js';
 
 export interface ReplyTriage {
   intent: 'interested' | 'meeting_request' | 'question' | 'referral' | 'not_now' | 'not_interested' | 'auto_reply' | 'unrelated';
@@ -46,35 +46,35 @@ const INTENT_TO_STATUS: Partial<Record<ReplyTriage['intent'], SchoolStatus>> = {
 /** Records a reply, triages it, and halts the sequence unless it is automated. */
 export async function recordReply(school: SchoolRow, subject: string, body: string): Promise<ReplyTriage> {
   const triage = await triageReply(school, subject, body);
-  logEvent(school.id, 'reply.received', { subject, intent: triage.intent, summary: triage.summary });
+  await logEvent(school.id, 'reply.received', { subject, intent: triage.intent, summary: triage.summary });
 
   if (triage.should_stop_sequence && triage.intent !== 'auto_reply') {
     const status = INTENT_TO_STATUS[triage.intent] ?? 'replied';
-    updateSchool(school.id, { status, next_action_at: null });
-    getDb()
-      .prepare(`UPDATE emails SET status = 'skipped' WHERE school_id = ? AND status = 'queued'`)
-      .run(school.id);
-    logEvent(school.id, 'sequence.stopped', { reason: triage.intent });
+    await updateSchool(school.id, { status, next_action_at: null });
+    await sql()`UPDATE emails SET status = 'skipped' WHERE school_id = ${school.id} AND status = 'queued'`;
+    await logEvent(school.id, 'sequence.stopped', { reason: triage.intent });
   }
   return triage;
 }
 
-function matchSchoolByAddress(from: string): SchoolRow | undefined {
+async function matchSchoolByAddress(from: string): Promise<SchoolRow | undefined> {
   const address = from.toLowerCase().match(/[^\s<>"]+@[^\s<>"]+/)?.[0];
   if (!address) return undefined;
-  const d = getDb();
-  const exact = d.prepare('SELECT * FROM schools WHERE lower(contact_email) = ?').get(address) as SchoolRow | undefined;
+  const s = sql();
+  const exact = (await s<SchoolRow[]>`SELECT * FROM schools WHERE lower(contact_email) = ${address}`)[0];
   if (exact) return exact;
   // Someone else at the school may answer from the same domain.
   const domain = address.split('@')[1];
   if (!domain || ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com'].includes(domain)) return undefined;
-  return d
-    .prepare(`SELECT * FROM schools WHERE contact_email LIKE ? AND status NOT IN ('discovered','disqualified') ORDER BY updated_at DESC LIMIT 1`)
-    .get(`%@${domain}`) as SchoolRow | undefined;
+  return (await s<SchoolRow[]>`
+    SELECT * FROM schools
+    WHERE contact_email LIKE ${'%@' + domain}
+      AND status NOT IN ('discovered', 'disqualified')
+    ORDER BY updated_at DESC LIMIT 1`)[0];
 }
 
-export function imapConfigured(): boolean {
-  return Boolean(config.imap.host && config.imap.user && config.imap.pass);
+export async function imapConfigured(): Promise<boolean> {
+  return imapConfiguredIn(await getSettings());
 }
 
 /**
@@ -82,13 +82,14 @@ export function imapConfigured(): boolean {
  * IMAP credentials Joy marks replies by hand in the dashboard.
  */
 export async function pollInbox(): Promise<{ scanned: number; matched: number }> {
-  if (!imapConfigured()) return { scanned: 0, matched: 0 };
+  const settings = await getSettings();
+  if (!imapConfiguredIn(settings)) return { scanned: 0, matched: 0 };
 
   const client = new ImapFlow({
-    host: config.imap.host,
-    port: config.imap.port,
+    host: settings.imapHost,
+    port: settings.imapPort,
     secure: true,
-    auth: { user: config.imap.user, pass: config.imap.pass },
+    auth: { user: settings.imapUser, pass: settings.imapPass },
     logger: false,
   });
 
@@ -97,7 +98,7 @@ export async function pollInbox(): Promise<{ scanned: number; matched: number }>
   await client.connect();
   const lock = await client.getMailboxLock('INBOX');
   try {
-    const lastUid = Number(kvGet('imap:last_uid') ?? 0);
+    const lastUid = Number((await kvGet('imap:last_uid')) ?? 0);
     let highest = lastUid;
     // On a cold start only look at recent mail, never the whole mailbox history.
     const range = lastUid > 0 ? `${lastUid + 1}:*` : undefined;
@@ -108,7 +109,7 @@ export async function pollInbox(): Promise<{ scanned: number; matched: number }>
       highest = Math.max(highest, msg.uid);
       scanned++;
       const from = msg.envelope?.from?.[0]?.address ?? '';
-      const school = matchSchoolByAddress(from);
+      const school = await matchSchoolByAddress(from);
       if (!school) continue;
       const subject = msg.envelope?.subject ?? '(no subject)';
       const body = msg.source?.toString('utf8') ?? '';
@@ -117,12 +118,12 @@ export async function pollInbox(): Promise<{ scanned: number; matched: number }>
       await recordReply(school, subject, text);
       matched++;
     }
-    if (highest > lastUid) kvSet('imap:last_uid', String(highest));
+    if (highest > lastUid) await kvSet('imap:last_uid', String(highest));
   } finally {
     lock.release();
     await client.logout();
   }
 
-  if (scanned) logEvent(null, 'inbox.polled', { scanned, matched });
+  if (scanned) await logEvent(null, 'inbox.polled', { scanned, matched });
   return { scanned, matched };
 }

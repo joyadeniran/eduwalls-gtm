@@ -10,80 +10,56 @@ function num(v: string | undefined, dflt: number): number {
   return Number.isFinite(n) ? n : dflt;
 }
 
-export const config = {
-  // The only hard requirement. Everything else has a safe default.
-  geminiApiKey: process.env.GEMINI_API_KEY ?? '',
-  models: {
-    // Grounded research and reply triage.
-    research: process.env.GEMINI_RESEARCH_MODEL ?? 'gemini-2.5-flash',
-    // Qualification and email copy.
-    writer: process.env.GEMINI_WRITER_MODEL ?? 'gemini-2.5-flash',
-  },
-
+/**
+ * Boot-time environment only. Everything an operator can change at runtime
+ * lives in the settings table instead, see src/settings.ts.
+ */
+export const env = {
+  databaseUrl: process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? '',
   port: num(process.env.PORT, 3000),
-  dbPath: process.env.DB_PATH ?? 'data/autogtm.db',
 
-  // Dry run is the default. Nothing leaves the building until Joy flips this.
-  liveSend: bool(process.env.LIVE_SEND, false),
+  // Guards the dashboard and the whole API. Without it the deployment is
+  // public, so the server refuses to serve anything in production.
+  dashboardPassword: process.env.DASHBOARD_PASSWORD ?? '',
+  // Guards the cron endpoint so only the scheduler can trigger a run.
+  cronSecret: process.env.CRON_SECRET ?? '',
+  // Encrypts secrets stored in the settings table. Recommended, not required.
+  appSecret: process.env.APP_SECRET ?? '',
 
-  sender: {
-    email: process.env.FROM_EMAIL ?? 'hello@myeduwalls.com',
-    name: process.env.FROM_NAME ?? 'Joy Adeniran, Eduwalls Africa',
-    replyTo: process.env.REPLY_TO_EMAIL ?? process.env.FROM_EMAIL ?? 'hello@myeduwalls.com',
-  },
+  isServerless: Boolean(process.env.VERCEL),
+  isProduction: process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL),
 
-  brevo: { apiKey: process.env.BREVO_API_KEY ?? '' },
-  smtp: {
-    host: process.env.SMTP_HOST ?? '',
-    port: num(process.env.SMTP_PORT, 587),
-    user: process.env.SMTP_USER ?? '',
-    pass: process.env.SMTP_PASS ?? '',
-  },
-
-  // Optional inbound mailbox polling so replies stop sequences on their own.
-  imap: {
-    host: process.env.IMAP_HOST ?? '',
-    port: num(process.env.IMAP_PORT, 993),
-    user: process.env.IMAP_USER ?? '',
-    pass: process.env.IMAP_PASS ?? '',
-  },
-
-  hubspot: { token: process.env.HUBSPOT_ACCESS_TOKEN ?? '' },
-
-  engine: {
-    enabled: bool(process.env.ENGINE_ENABLED, true),
-    tickSeconds: num(process.env.ENGINE_TICK_SECONDS, 300),
-    // Guard rails. Cold outreach that runs hot gets a domain burned.
+  // Seed values. The settings table wins once a value is saved there.
+  seed: {
+    geminiApiKey: process.env.GEMINI_API_KEY ?? '',
+    researchModel: process.env.GEMINI_RESEARCH_MODEL ?? 'gemini-2.5-flash',
+    writerModel: process.env.GEMINI_WRITER_MODEL ?? 'gemini-2.5-flash',
+    liveSend: bool(process.env.LIVE_SEND, false),
+    fromEmail: process.env.FROM_EMAIL ?? '',
+    fromName: process.env.FROM_NAME ?? 'Joy Adeniran, Eduwalls Africa',
+    replyTo: process.env.REPLY_TO_EMAIL ?? '',
+    brevoApiKey: process.env.BREVO_API_KEY ?? '',
+    smtpHost: process.env.SMTP_HOST ?? '',
+    smtpPort: num(process.env.SMTP_PORT, 587),
+    smtpUser: process.env.SMTP_USER ?? '',
+    smtpPass: process.env.SMTP_PASS ?? '',
+    imapHost: process.env.IMAP_HOST ?? '',
+    imapPort: num(process.env.IMAP_PORT, 993),
+    imapUser: process.env.IMAP_USER ?? '',
+    imapPass: process.env.IMAP_PASS ?? '',
+    hubspotToken: process.env.HUBSPOT_ACCESS_TOKEN ?? '',
     maxSendsPerDay: num(process.env.MAX_SENDS_PER_DAY, 25),
-    maxResearchPerTick: num(process.env.MAX_RESEARCH_PER_TICK, 3),
     maxSendsPerTick: num(process.env.MAX_SENDS_PER_TICK, 5),
-    // Only email schools scoring at or above this out of 100.
+    maxResearchPerTick: num(process.env.MAX_RESEARCH_PER_TICK, 3),
     minScoreToContact: num(process.env.MIN_SCORE_TO_CONTACT, 60),
     followUp1Days: num(process.env.FOLLOWUP_1_DAYS, 5),
     followUp2Days: num(process.env.FOLLOWUP_2_DAYS, 10),
-    // Autonomous prospecting: keep the funnel topped up to this many leads.
     autoDiscover: bool(process.env.AUTO_DISCOVER, true),
     discoverTargetBacklog: num(process.env.DISCOVER_TARGET_BACKLOG, 20),
-    // Lagos business hours only (WAT = UTC+1), Mon-Fri.
-    sendWindow: {
-      enabled: bool(process.env.SEND_WINDOW_ENABLED, true),
-      startHourWat: num(process.env.SEND_START_HOUR_WAT, 8),
-      endHourWat: num(process.env.SEND_END_HOUR_WAT, 17),
-    },
+    sendWindowEnabled: bool(process.env.SEND_WINDOW_ENABLED, true),
+    sendStartHourWat: num(process.env.SEND_START_HOUR_WAT, 8),
+    sendEndHourWat: num(process.env.SEND_END_HOUR_WAT, 17),
+    engineEnabled: bool(process.env.ENGINE_ENABLED, true),
+    engineTickSeconds: num(process.env.ENGINE_TICK_SECONDS, 300),
   },
 } as const;
-
-export function assertConfigured(): void {
-  if (!config.geminiApiKey) {
-    throw new Error('GEMINI_API_KEY is not set. Copy .env.example to .env and add your key.');
-  }
-}
-
-export type SendTransport = 'brevo' | 'smtp' | 'dry-run';
-
-export function activeTransport(): SendTransport {
-  if (!config.liveSend) return 'dry-run';
-  if (config.brevo.apiKey) return 'brevo';
-  if (config.smtp.host && config.smtp.user) return 'smtp';
-  return 'dry-run';
-}

@@ -1,12 +1,19 @@
 import { GoogleGenAI } from '@google/genai';
-import { config, assertConfigured } from './config.js';
+import { getSettings } from './settings.js';
 
-let client: GoogleGenAI | null = null;
+const clients = new Map<string, GoogleGenAI>();
 
-function ai(): GoogleGenAI {
-  assertConfigured();
-  if (!client) client = new GoogleGenAI({ apiKey: config.geminiApiKey });
-  return client;
+async function ai(): Promise<{ client: GoogleGenAI; research: string; writer: string }> {
+  const s = await getSettings();
+  if (!s.geminiApiKey) {
+    throw new Error('No Gemini API key configured. Add one in Settings, or set GEMINI_API_KEY.');
+  }
+  let client = clients.get(s.geminiApiKey);
+  if (!client) {
+    client = new GoogleGenAI({ apiKey: s.geminiApiKey });
+    clients.set(s.geminiApiKey, client);
+  }
+  return { client, research: s.researchModel, writer: s.writerModel };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -21,7 +28,7 @@ async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 3): 
     } catch (err) {
       lastErr = err;
       const msg = err instanceof Error ? err.message : String(err);
-      // Rate limits and transient 5xx are worth waiting out; bad keys are not.
+      // Rate limits and transient 5xx are worth waiting out; a bad key is not.
       const retryable = /429|5\d\d|timeout|ECONNRESET|fetch failed|overloaded|UNAVAILABLE/i.test(msg);
       if (!retryable || i === attempts - 1) break;
       await sleep(2000 * 2 ** i);
@@ -32,16 +39,16 @@ async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 3): 
 
 /** Free-text generation with Google Search grounding. Used for live research. */
 export async function groundedResearch(prompt: string): Promise<{ text: string; sources: string[] }> {
+  const { client, research } = await ai();
   const res = await withRetry('grounded research', () =>
-    ai().models.generateContent({
-      model: config.models.research,
+    client.models.generateContent({
+      model: research,
       contents: prompt,
       config: { tools: [{ googleSearch: {} }], temperature: 0.2 },
     }),
   );
   const text = res.text ?? '';
-  const chunks = res.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
-  const sources = chunks
+  const sources = (res.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [])
     .map((c) => c.web?.uri)
     .filter((u): u is string => Boolean(u))
     .slice(0, 12);
@@ -53,16 +60,17 @@ export async function groundedResearch(prompt: string): Promise<{ text: string; 
  * schema, so grounded facts are passed in as text and shaped here.
  */
 export async function generateJson<T>(opts: {
-  model?: string;
+  useResearchModel?: boolean;
   system?: string;
   prompt: string;
   schema: Record<string, unknown>;
   temperature?: number;
   maxOutputTokens?: number;
 }): Promise<T> {
+  const { client, research, writer } = await ai();
   const res = await withRetry('structured generation', () =>
-    ai().models.generateContent({
-      model: opts.model ?? config.models.writer,
+    client.models.generateContent({
+      model: opts.useResearchModel ? research : writer,
       contents: opts.prompt,
       config: {
         systemInstruction: opts.system,
@@ -86,15 +94,16 @@ export async function generateJson<T>(opts: {
   }
 }
 
-export async function healthCheck(): Promise<boolean> {
+export async function healthCheck(): Promise<{ ok: boolean; detail: string }> {
   try {
-    const res = await ai().models.generateContent({
-      model: config.models.writer,
+    const { client, writer } = await ai();
+    const res = await client.models.generateContent({
+      model: writer,
       contents: 'Reply with the single word: ok',
       config: { maxOutputTokens: 16 },
     });
-    return Boolean(res.text);
-  } catch {
-    return false;
+    return { ok: Boolean(res.text), detail: res.text ? `${writer} responded` : 'empty response' };
+  } catch (err) {
+    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
   }
 }

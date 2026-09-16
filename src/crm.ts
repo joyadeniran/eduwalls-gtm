@@ -1,19 +1,16 @@
-import { config } from './config.js';
+import { getSettings } from './settings.js';
 import { logEvent, updateSchool, type SchoolRow } from './db.js';
 
 const BASE = 'https://api.hubapi.com';
 
-export function hubspotEnabled(): boolean {
-  return Boolean(config.hubspot.token);
+export async function hubspotEnabled(): Promise<boolean> {
+  return Boolean((await getSettings()).hubspotToken);
 }
 
-async function hs<T>(path: string, body: unknown): Promise<T> {
+async function hs<T>(token: string, path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: {
-      authorization: `Bearer ${config.hubspot.token}`,
-      'content-type': 'application/json',
-    },
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
   const text = await res.text();
@@ -26,11 +23,13 @@ async function hs<T>(path: string, body: unknown): Promise<T> {
  * Best effort: a CRM failure must never block or repeat an email send.
  */
 export async function logToCrm(school: SchoolRow, email1: { subject: string; body: string }): Promise<void> {
-  if (!hubspotEnabled()) return;
+  const settings = await getSettings();
+  const token = settings.hubspotToken;
+  if (!token) return;
   try {
     let companyId = school.hubspot_company_id;
     if (!companyId) {
-      const company = await hs<{ id: string }>('/crm/v3/objects/companies', {
+      const company = await hs<{ id: string }>(token, '/crm/v3/objects/companies', {
         properties: {
           name: school.name,
           city: school.area ?? 'Lagos',
@@ -41,28 +40,28 @@ export async function logToCrm(school: SchoolRow, email1: { subject: string; bod
         },
       });
       companyId = company.id;
-      updateSchool(school.id, { hubspot_company_id: companyId });
+      await updateSchool(school.id, { hubspot_company_id: companyId });
     }
 
     let dealId = school.hubspot_deal_id;
     if (!dealId) {
       const today = new Date().toISOString().slice(0, 10);
-      const deal = await hs<{ id: string }>('/crm/v3/objects/deals', {
+      const deal = await hs<{ id: string }>(token, '/crm/v3/objects/deals', {
         properties: {
           dealname: `Eduwalls - ${school.name}`,
           dealstage: 'appointmentscheduled',
           pipeline: 'default',
-          description: `Cold outreach initiated ${today}. Email 2 due day ${config.engine.followUp1Days}. Email 3 due day ${config.engine.followUp2Days}.`,
+          description: `Cold outreach initiated ${today}. Email 2 due day ${settings.followUp1Days}. Email 3 due day ${settings.followUp2Days}.`,
         },
         associations: [
           { to: { id: companyId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 5 }] },
         ],
       });
       dealId = deal.id;
-      updateSchool(school.id, { hubspot_deal_id: dealId });
+      await updateSchool(school.id, { hubspot_deal_id: dealId });
     }
 
-    await hs('/crm/v3/objects/notes', {
+    await hs(token, '/crm/v3/objects/notes', {
       properties: {
         hs_note_body: `Email 1 sent\nSubject: ${email1.subject}\n\n${email1.body}`,
         hs_timestamp: new Date().toISOString(),
@@ -72,8 +71,8 @@ export async function logToCrm(school: SchoolRow, email1: { subject: string; bod
       ],
     });
 
-    logEvent(school.id, 'crm.logged', { companyId, dealId });
+    await logEvent(school.id, 'crm.logged', { companyId, dealId });
   } catch (err) {
-    logEvent(school.id, 'crm.failed', err instanceof Error ? err.message : String(err));
+    await logEvent(school.id, 'crm.failed', err instanceof Error ? err.message : String(err));
   }
 }

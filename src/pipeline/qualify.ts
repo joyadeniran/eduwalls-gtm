@@ -1,6 +1,6 @@
 import { generateJson } from '../gemini.js';
 import { COMPANY_CONTEXT } from '../brand.js';
-import { config } from '../config.js';
+import { getSettings } from '../settings.js';
 import { logEvent, updateSchool, type SchoolRow } from '../db.js';
 import type { ResearchBrief } from './research.js';
 
@@ -44,7 +44,6 @@ POOR FIT:
 /** Step 2 of the loop. Scores the brief against the ICP before spending a send. */
 export async function qualifySchool(school: SchoolRow, brief: ResearchBrief): Promise<Qualification> {
   const q = await generateJson<Qualification>({
-    model: config.models.writer,
     system: `${COMPANY_CONTEXT}\n\nYou are a disciplined sales qualifier. You protect the team's time by scoring honestly. A thin brief with no verified detail is not a high score, it is an unknown, so score it in the middle and flag the gap.\n\n${ICP}`,
     prompt: `Qualify this school.
 
@@ -69,14 +68,15 @@ Score 0 to 100 on ICP fit. Use "skip" only for a clear structural disqualifier s
 export async function runQualify(school: SchoolRow, brief: ResearchBrief): Promise<Qualification> {
   const q = await qualifySchool(school, brief);
   const merged = { ...brief, qualification: q };
-  const passes = q.verdict === 'pursue' && q.score >= config.engine.minScoreToContact;
+  const settings = await getSettings();
+  const passes = q.verdict === 'pursue' && q.score >= settings.minScoreToContact;
 
-  updateSchool(school.id, {
+  await updateSchool(school.id, {
     score: q.score,
     research_json: JSON.stringify(merged),
     status: passes ? 'researched' : 'disqualified',
     disqualified_reason: passes ? null : `${q.verdict} at score ${q.score}: ${q.reasoning}`,
   });
-  logEvent(school.id, passes ? 'qualify.pass' : 'qualify.fail', { score: q.score, verdict: q.verdict });
+  await logEvent(school.id, passes ? 'qualify.pass' : 'qualify.fail', { score: q.score, verdict: q.verdict });
   return q;
 }

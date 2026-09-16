@@ -1,7 +1,6 @@
 import { groundedResearch, generateJson } from '../gemini.js';
 import { COMPANY_CONTEXT, PROGRAMS } from '../brand.js';
-import { config } from '../config.js';
-import { getDb, logEvent, upsertSchool, updateSchool, type SchoolRow } from '../db.js';
+import { sql, logEvent, upsertSchool, updateSchool, type SchoolRow } from '../db.js';
 
 export interface ResearchBrief {
   school_name: string;
@@ -65,7 +64,7 @@ State clearly which items you could not verify. Do not speculate or fill gaps wi
   );
 
   const brief = await generateJson<ResearchBrief>({
-    model: config.models.research,
+    useResearchModel: true,
     system: `${COMPANY_CONTEXT}\n\nYou are the research analyst for the Eduwalls sales team. You turn raw research notes into a sales brief. You never state as fact anything the notes do not support. Available programs: ${PROGRAMS.join(', ')}.`,
     prompt: `Raw research notes for "${school.name}":\n\n${text}\n\nTurn these notes into a structured brief for an Eduwalls cold outreach sequence.
 - best_programs: pick 2 or 3 from the Eduwalls program list that best fit this school.
@@ -85,9 +84,9 @@ State clearly which items you could not verify. Do not speculate or fill gaps wi
 }
 
 export async function runResearch(school: SchoolRow): Promise<ResearchBrief> {
-  updateSchool(school.id, { status: 'researching' });
+  await updateSchool(school.id, { status: 'researching' });
   const brief = await researchSchool(school);
-  updateSchool(school.id, {
+  await updateSchool(school.id, {
     status: 'researched',
     research_json: JSON.stringify(brief),
     area: school.area ?? brief.area,
@@ -97,7 +96,7 @@ export async function runResearch(school: SchoolRow): Promise<ResearchBrief> {
     contact_name: school.contact_name ?? brief.contact_name,
     last_error: null,
   });
-  logEvent(school.id, 'research.done', { confidence: brief.confidence, signals: brief.signals.length });
+  await logEvent(school.id, 'research.done', { confidence: brief.confidence, signals: brief.signals.length });
   return brief;
 }
 
@@ -113,7 +112,7 @@ interface DiscoveredSchool {
  * the pipeline, so the funnel refills itself without Joy typing names.
  */
 export async function discoverSchools(limit = 10): Promise<{ added: number; seen: number }> {
-  const known = (getDb().prepare('SELECT name FROM schools ORDER BY id DESC LIMIT 400').all() as Array<{ name: string }>)
+  const known = (await sql()<{ name: string }[]>`SELECT name FROM schools ORDER BY id DESC LIMIT 400`)
     .map((r) => r.name);
 
   const areas = ['Lekki', 'Ikeja', 'Yaba', 'Surulere', 'Ikoyi', 'Victoria Island', 'Ajah', 'Magodo', 'Gbagada', 'Ogudu', 'Festac', 'Ikorodu'];
@@ -159,7 +158,7 @@ ${known.join('; ') || '(none yet)'}`,
   let added = 0;
   for (const s of (parsed.schools ?? []).slice(0, limit)) {
     if (!s.name || s.name.trim().length < 4) continue;
-    const { created } = upsertSchool({
+    const { created } = await upsertSchool({
       name: s.name,
       area: s.area ?? focus,
       website: s.website ?? null,
@@ -168,7 +167,7 @@ ${known.join('; ') || '(none yet)'}`,
     });
     if (created) added++;
   }
-  logEvent(null, 'discovery.run', { area: focus, found: parsed.schools?.length ?? 0, added });
+  await logEvent(null, 'discovery.run', { area: focus, found: parsed.schools?.length ?? 0, added });
   return { added, seen: parsed.schools?.length ?? 0 };
 }
 
@@ -208,13 +207,13 @@ ${text}`,
     : null;
 
   if (email || parsed.name) {
-    updateSchool(school.id, {
+    await updateSchool(school.id, {
       contact_email: school.contact_email ?? email,
       contact_name: school.contact_name ?? parsed.name ?? null,
     });
-    logEvent(school.id, 'contact.found', { email, name: parsed.name });
+    await logEvent(school.id, 'contact.found', { email, name: parsed.name });
   } else {
-    logEvent(school.id, 'contact.not_found', null);
+    await logEvent(school.id, 'contact.not_found', null);
   }
   return { email, name: parsed.name ?? null };
 }
