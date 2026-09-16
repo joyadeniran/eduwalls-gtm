@@ -21,6 +21,41 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-09-16 — Deployed to Vercel, merged to main
+**Commit:** `bbe5fad`  **Spec:** no change
+
+Merged the serverless port into `main` (Joy had already merged PR #1 overnight,
+so this merged on top of that) and linked a Vercel project to the repository.
+
+- Project `eduwalls-autogtm-app`, production branch `main`, so every push now
+  deploys automatically. This replaces two earlier manual file deployments that
+  failed because the upload could not carry the whole source tree in one call.
+- Vercel Authentication (SSO) is enabled on the project by default and left on.
+  It sits in front of the app's own password gate. Joy reaches the app because
+  she owns the Vercel account.
+- README rewritten around deployment: the five environment variables, what to do
+  after the first deploy, and the scheduling options.
+
+**Verified:** the build succeeded from commit `3b8a630` (tsc clean on Vercel's
+runner, deployment completed, functions deployed).
+
+**Unverified:**
+- The running app has not been exercised in production. Vercel SSO blocks this
+  sandbox from reaching it, and no `DATABASE_URL` is set yet, so every request
+  would fail until Joy adds the environment variables. Everything behind those
+  variables was verified locally against a real Postgres, see the entry below.
+- Whether Vercel Cron bypasses Deployment Protection. Vercel documents that it
+  does, but it has not fired yet. Check after the first 09:00 UTC run.
+
+**Follow-ups:**
+- Set the five environment variables, then redeploy once so they take effect.
+- An external scheduler cannot reach `/api/cron` while Vercel Authentication is
+  on. Turning it off is safe only because `DASHBOARD_PASSWORD` and `CRON_SECRET`
+  already guard everything, but it is a deliberate decision, so it gets its own
+  log entry when it happens.
+
+---
+
 ## 2026-09-16 — Ported to serverless, deployed to Vercel, added settings UI and auth
 **Commit:** `cad7850`  **Spec:** sections 1, 2 (new N9), 3, 4, 6a (new), 7, 8, 9
 

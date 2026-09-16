@@ -5,8 +5,9 @@ researches them against live web sources, scores them against the ICP, writes a
 3-email outreach sequence in Joy's voice, sends email 1, and follows up on day 5
 and day 10 unless the school replies.
 
-One API key runs the whole thing: **Gemini**. Email delivery and CRM logging are
-optional add-ons; without them the agent still researches, qualifies and drafts.
+One API key runs the thinking: **Gemini**. Sending, reply detection and CRM
+logging are configured in the dashboard, and each one degrades rather than
+breaks when it is missing.
 
 ## The loop
 
@@ -26,21 +27,60 @@ Every tick (5 minutes by default) the engine does this, in order:
 6. **Send.** Delivers what is due, inside Lagos business hours, under the daily
    cap. Email 1 also creates the HubSpot Company, Deal and Note.
 
-## Setup
+## Deployed on Vercel
+
+Project: `eduwalls-autogtm-app`, linked to this repo. Every push to `main`
+deploys automatically.
+
+### Environment variables (set these in Vercel, then redeploy)
+
+| Variable | Required | What it is |
+| --- | --- | --- |
+| `DATABASE_URL` | yes | Postgres connection string. Supabase, Neon, or any Postgres. Nothing works without it. |
+| `DASHBOARD_PASSWORD` | yes | Guards the dashboard and the API. In production the server refuses to serve at all without it. |
+| `CRON_SECRET` | yes | Guards `/api/cron`. Vercel Cron sends it automatically as a bearer token. |
+| `APP_SECRET` | strongly recommended | Encrypts saved credentials at rest. Without it, keys you save in Settings sit in your database as plain text. |
+| `GEMINI_API_KEY` | optional here | Can be set here or saved in Settings instead. |
+
+Everything else is configured in the dashboard, not here.
+
+### After the first deploy
+
+1. Open the app and sign in with `DASHBOARD_PASSWORD`.
+2. Go to **Settings** and fill in the Gemini key, the sender details, the IMAP
+   mailbox and, if you want it, HubSpot. Each section has a **Test connection**
+   button. Use them.
+3. Leave **Live sending** off until you have read a few generated sequences.
+4. Add a school, press **Research and draft**, and read what it writes.
+
+### Scheduling
+
+The Vercel Hobby plan allows one cron run per day, so `vercel.json` schedules
+`/api/cron` at 09:00 UTC (10:00 WAT). One invocation runs cycles back to back
+until the work runs out or it approaches its time limit, so a daily run still
+moves the pipeline.
+
+For a tighter loop, either:
+
+- point any external scheduler at `https://<your-app>/api/cron?secret=<CRON_SECRET>`
+  every few minutes, which needs Vercel Authentication turned off for the
+  project so the request can reach the app, or
+- upgrade to Pro and change the schedule in `vercel.json` to `*/10 * * * *`.
+
+## Running it as a normal server instead
+
+The same code runs as a long lived process with an in-process timer, no cron
+needed:
 
 ```bash
 npm install
-cp .env.example .env     # add GEMINI_API_KEY
+cp .env.example .env     # add DATABASE_URL and GEMINI_API_KEY
 npm run dev              # dashboard on http://localhost:3000
+npm run build && npm start
 ```
 
-That is enough to run the whole pipeline in **dry run**: real research, real
-qualification, real drafts, nothing delivered. Read a few sequences, then set
-`LIVE_SEND=true` and add a Brevo key or SMTP credentials when you are happy.
-
-```bash
-npm run build && npm start   # production
-```
+Locally, without `DASHBOARD_PASSWORD`, the app is open so you are not fighting a
+login on your own machine. In production it refuses to start unprotected.
 
 ## Guard rails
 
@@ -124,14 +164,17 @@ src/
   server.ts            HTTP API
   cli.ts               operator commands
   crm.ts               HubSpot Company + Deal + Note
+  settings.ts          runtime settings: table over env over default
+  crypto.ts            secret encryption, constant-time password compare
+  dashboard.ts         the dashboard, inlined so auth cannot be bypassed
   pipeline/
     research.ts        prospecting, school research, contact finding
     qualify.ts         ICP scoring
     compose.ts         the 3-email sequence
     send.ts            Brevo / SMTP / dry run, cap and window
     replies.ts         IMAP polling and reply triage
-public/index.html      dashboard
+api/index.js           Vercel serverless entry
 ```
 
-State lives in one SQLite file at `DB_PATH`. Back it up and you have backed up
-the whole pipeline.
+State lives in Postgres. The schema is created on first request, so there is no
+migration step to run.
