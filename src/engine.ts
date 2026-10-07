@@ -180,9 +180,11 @@ export async function tick(): Promise<TickReport> {
   }
 
   // 1. Replies first. A school that answered must not receive a follow up.
+  let repliesVisible = false;
   if (imapConfiguredIn(s)) {
     try {
       report.repliesMatched = (await pollInbox()).matched;
+      repliesVisible = true;
     } catch (err) {
       report.errors.push(`inbox: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -209,6 +211,16 @@ export async function tick(): Promise<TickReport> {
   }
 
   // 4. Send what is due, inside the window and under the cap.
+  // N7: live delivery needs a readable inbox this tick, or a school that
+  // replied could be followed up. Dry run is unaffected.
+  if (transportFor(s) !== 'dry-run' && !repliesVisible) {
+    report.skipped.push(imapConfiguredIn(s)
+      ? 'live sending paused: the inbox could not be read this tick, so replies are unknown'
+      : 'live sending paused: no mailbox connected, so replies are invisible');
+    report.finishedAt = nowIso();
+    await logEvent(null, 'engine.tick', report);
+    return report;
+  }
   if (!insideSendWindow(s)) {
     report.skipped.push('outside Lagos business hours, sending paused');
     report.finishedAt = nowIso();

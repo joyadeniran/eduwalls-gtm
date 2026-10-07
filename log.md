@@ -21,6 +21,66 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-10-07 — Live sending now requires a readable inbox (N7)
+**Commit:** see this entry's commit  **Spec:** sections 2 (N7 row), 3 (IMAP row), 4 (step 6)
+
+Joy asked what stands between the deployment and going live. The audit found
+that with `LIVE_SEND=true` and no IMAP mailbox, the agent would deliver real
+follow ups with no way to see replies, breaking N7. The dashboard listed this
+as a warning only, and `readiness()` is display-only, so even a blocker there
+would not have stopped a send.
+
+- `src/engine.ts`: the send step is skipped for the whole tick when the
+  transport is live and the inbox was not read this tick, either because no
+  mailbox is connected or because the poll failed. The reason lands in the
+  tick report's `skipped` and in the `engine.tick` event. Dry run is untouched.
+- `src/settings.ts`: no mailbox with live sending on is now a blocker in the
+  readiness report, and the dry run warning says live sending stays paused.
+- Manual sends (`POST` send in `src/server.ts`, `send` in `src/cli.ts`) are
+  deliberately not blocked: those are Joy's own decision per school.
+- `.env.example` now lists the four deploy-time variables (`DATABASE_URL`,
+  `DASHBOARD_PASSWORD`, `CRON_SECRET`, `APP_SECRET`) and drops the SQLite
+  `DB_PATH` left over from v1. `CLAUDE.md` said "throwaway `DB_PATH`"; it now
+  says `DATABASE_URL`.
+- Correction to the entry below: it cites commit `bbe5fad`, but the commit on
+  `main` and the one Vercel deployed is `042874d`.
+
+This tightens a guard rail, it does not loosen one. No cap, window, score or
+`LIVE_SEND` default changed.
+
+**Verified** against a throwaway local Postgres 16, no Gemini key, send window
+off, auto discover off, one `sequenced` school with three queued emails to an
+`.invalid` address:
+- Dry run, no mailbox: tick sent 1, step 1 recorded `sent/dry-run`, school
+  moved to `contacted`. Existing behaviour unchanged.
+- Live with a fake Brevo key, no mailbox: tick sent 0, skipped "live sending
+  paused: no mailbox connected", all three emails still `queued`, school still
+  `sequenced`; readiness listed the new blocker.
+- Live with a fake Brevo key, IMAP pointed at `127.0.0.1:1`: inbox error
+  recorded (`ECONNREFUSED`), tick sent 0, skipped "the inbox could not be read
+  this tick", nothing delivered.
+- `npm run typecheck` and `npm run build` clean.
+
+**Unverified:** the guard against a real IMAP mailbox that connects
+successfully (needs live credentials). Everything in `spec.md` section 9 stays
+unverified.
+
+**Follow-ups:**
+- Go-live checklist, as found on 2026-10-07. Production serves nothing until
+  1 and 2 are done; 5 is Joy's decision and gets its own entry.
+  1. Create a Postgres for this app (none of the existing Supabase projects is
+     it) and set `DATABASE_URL`, `DASHBOARD_PASSWORD`, `CRON_SECRET`,
+     `APP_SECRET` on the Vercel project, which currently has no variables.
+     Redeploy.
+  2. Add the Gemini key, run one real school through `prepare` in dry run and
+     read the brief and the three drafts.
+  3. Connect the IMAP mailbox and Brevo or SMTP, with SPF and DKIM on the
+     sending domain; use each Test connection button.
+  4. Leave it in dry run for a few days and look at the scores.
+  5. Turn on `LIVE_SEND`.
+
+---
+
 ## 2026-09-16 — Deployed to Vercel, merged to main
 **Commit:** `bbe5fad`  **Spec:** no change
 

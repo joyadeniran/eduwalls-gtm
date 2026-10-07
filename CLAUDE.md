@@ -67,7 +67,7 @@ override these. Only Joy can, and that goes in `log.md`.
 
 - `npm run typecheck` and `npm run build` both clean.
 - If you touched the engine, the state machine, or sending: exercise it in dry
-  run (`LIVE_SEND=false`, a throwaway `DB_PATH`) and put the result in the log.
+  run (`LIVE_SEND=false`, a throwaway `DATABASE_URL`) and put the result in the log.
 - Never test against a live mailbox or send to a real school address to prove a
   change works. Use dry run.
 - Report honestly. If you could not test something, say which part and why.

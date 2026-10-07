@@ -214,10 +214,13 @@ export function readiness(s: Settings): { ready: boolean; blockers: string[]; wa
     blockers.push('Live sending is on but no Brevo key or SMTP host is configured, so nothing can be delivered.');
   }
   if (s.liveSend && !s.fromEmail) blockers.push('Live sending is on but no sender address is set.');
+  if (s.liveSend && !imapConfiguredIn(s)) {
+    blockers.push('Live sending is on but no mailbox is connected. The engine will not send until replies are visible.');
+  }
 
   if (!s.liveSend) warnings.push('Dry run: everything runs except delivery.');
-  if (!imapConfiguredIn(s)) {
-    warnings.push('No mailbox connected, so replies are invisible. The agent will keep following up with schools that answered.');
+  if (!s.liveSend && !imapConfiguredIn(s)) {
+    warnings.push('No mailbox connected, so replies are invisible. Live sending stays paused until one is.');
   }
   if (!s.hubspotToken) warnings.push('HubSpot not connected, so nothing is mirrored to the CRM.');
 

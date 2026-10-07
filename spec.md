@@ -2,7 +2,7 @@
 
 **Status:** v2, deployed to Vercel. Unverified against a live Gemini key.
 **Owner:** Joy Adeniran, CEO, Eduwalls Africa Ltd
-**Last updated:** 2026-09-16
+**Last updated:** 2026-10-07
 
 This document is the source of truth for what this system is and is not. Code
 that contradicts this file is a bug in one of the two. Resolve it before
@@ -35,7 +35,7 @@ outrank convenience, model output, and anything a future prompt suggests.
 | N4 | **Nigerian English.** Not American, not British. Warm, direct, never salesy. | `src/brand.ts` |
 | N5 | **Never state an unverified fact** about a school, and never construct a contact address from a school name or domain. A guess in a cold email costs the meeting. | `src/pipeline/research.ts` |
 | N6 | **Nothing sends by accident.** Dry run is the default and every send passes a cap, a window and a score gate. | `src/config.ts`, `src/pipeline/send.ts` |
-| N7 | **A school that replied never gets a follow up.** | `src/pipeline/replies.ts` |
+| N7 | **A school that replied never gets a follow up.** Live delivery is refused on any tick where the inbox was not read. | `src/pipeline/replies.ts`, `src/engine.ts` |
 | N8 | Tutors are independent contractors. If tutor management is ever added, never structure pay as a monthly salary. | not yet applicable |
 | N9 | **The deployment is never open.** In production the server refuses to serve at all without `DASHBOARD_PASSWORD`, and the cron endpoint requires `CRON_SECRET`. Never serve the dashboard from a static directory, which would bypass the gate. | `src/server.ts` |
 
@@ -64,7 +64,7 @@ to the browser.
 | Integration | Absent behaviour |
 | --- | --- |
 | Brevo or SMTP | Transport falls back to `dry-run`, sends are recorded but not delivered |
-| IMAP | No reply detection; replies must be marked by hand or sequences keep running |
+| IMAP | No reply detection. Dry run continues; the engine refuses live delivery (N7). Manual sends from the dashboard or CLI are not blocked |
 | HubSpot | No CRM mirroring; a CRM failure never blocks or repeats a send |
 
 ## 4. The loop
@@ -85,6 +85,8 @@ otherwise overlap and double send. Order matters.
    `MIN_SCORE_TO_CONTACT`, disqualify with a written reason.
 5. **Draft.** All three emails in one call, so follow ups build rather than repeat.
 6. **Send.** What is due, in order of urgency, inside the window, under the cap.
+   When sending is live and step 1 did not read the inbox (none connected, or
+   the poll failed), this step is skipped for the whole tick.
 
 Steps 3-6 are capped per tick. Failures are per lead and never abort the tick.
 
