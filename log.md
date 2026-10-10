@@ -21,6 +21,33 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-10-10 — Cap Gemini thinking so answers are not starved
+**Commit:** see this entry's commit  **Spec:** no change
+
+With the key saved, Joy's Gemini test at 09:07 failed with "empty response".
+The key was accepted (no auth error). `gemini-2.5-flash` thinks before it
+answers and those tokens count against `maxOutputTokens`; the health check
+allowed 16, so thinking used them all and no text came back. The same budget
+is shared in real work: compose asks for 3000 tokens for three emails and
+structured generation defaults to 4096, so heavy thinking could truncate the
+JSON or return nothing.
+
+`src/gemini.ts` only (the one model file): structured generation now sets
+`thinkingConfig.thinkingBudget` to 1024 and adds that to the caller's
+`maxOutputTokens`, so each caller still gets its full answer budget. The health
+check uses a 128 thinking budget (the lowest every 2.5 model accepts) plus 64
+for the answer, and now reports the finish reason when no text comes back.
+Grounded research sets no output limit and is unchanged.
+
+**Verified:** the failure from the `settings.tested` event in production;
+typecheck and build clean; the installed SDK (`@google/genai` 2.22.0) types
+`thinkingBudget`.
+**Unverified:** any call against Gemini. Not testable here without decrypting
+Joy's saved key, which was deliberately not done. Her next Test connection is
+the check. Research and draft quality remain unverified as before.
+
+---
+
 ## 2026-10-10 — Warn when testing a key that has not been saved
 **Commit:** see this entry's commit  **Spec:** no change
 

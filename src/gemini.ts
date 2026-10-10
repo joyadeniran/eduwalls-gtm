@@ -16,6 +16,14 @@ async function ai(): Promise<{ client: GoogleGenAI; research: string; writer: st
   return { client, research: s.researchModel, writer: s.writerModel };
 }
 
+// Gemini 2.5 models think before answering, and thinking tokens count against
+// maxOutputTokens. Without a cap, a small limit can be spent entirely on
+// thinking and return no text. Cap thinking, and add the cap on top of each
+// caller's limit so the answer always gets the budget it asked for. 128 is the
+// lowest budget every 2.5 model accepts (Pro cannot go to 0).
+const THINKING_BUDGET = 1024;
+const HEALTH_THINKING_BUDGET = 128;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -77,7 +85,8 @@ export async function generateJson<T>(opts: {
         responseMimeType: 'application/json',
         responseSchema: opts.schema as never,
         temperature: opts.temperature ?? 0.6,
-        maxOutputTokens: opts.maxOutputTokens ?? 4096,
+        maxOutputTokens: (opts.maxOutputTokens ?? 4096) + THINKING_BUDGET,
+        thinkingConfig: { thinkingBudget: THINKING_BUDGET },
       },
     }),
   );
@@ -100,9 +109,11 @@ export async function healthCheck(): Promise<{ ok: boolean; detail: string }> {
     const res = await client.models.generateContent({
       model: writer,
       contents: 'Reply with the single word: ok',
-      config: { maxOutputTokens: 16 },
+      config: { maxOutputTokens: 64 + HEALTH_THINKING_BUDGET, thinkingConfig: { thinkingBudget: HEALTH_THINKING_BUDGET } },
     });
-    return { ok: Boolean(res.text), detail: res.text ? `${writer} responded` : 'empty response' };
+    if (res.text) return { ok: true, detail: `${writer} responded` };
+    const reason = res.candidates?.[0]?.finishReason;
+    return { ok: false, detail: `${writer} returned no text${reason ? ` (finish reason ${reason})` : ''}` };
   } catch (err) {
     return { ok: false, detail: err instanceof Error ? err.message : String(err) };
   }
