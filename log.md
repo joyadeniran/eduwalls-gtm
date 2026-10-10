@@ -21,6 +21,44 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-10-10 — Production database and environment variables
+**Commit:** see this entry's commit  **Spec:** no change
+
+Step 1 of the go-live checklist, done with Joy's explicit approval after an
+earlier attempt was refused for lack of it. Infrastructure only, no code.
+
+- New Supabase project `eduwalls-autogtm` (ref `tilrubumntvsyjytxsdf`,
+  `us-east-1`, free plan) beside the Vercel functions in `iad1`.
+- The app connects as a dedicated login role `autogtm`, not `postgres`. Its
+  tables live in a schema `autogtm`, set as the role's `search_path`, so they
+  sit outside the `public` schema that Supabase's Data API exposes. Checked:
+  `anon` has no usage on that schema.
+- Connection goes through the transaction pooler on port 6543 (`prepare: false`
+  is already set in `src/db.ts`). The engine lock is a row, not a session
+  advisory lock, so transaction pooling does not weaken it.
+- Vercel `eduwalls-autogtm-app` now has `DATABASE_URL`, `DASHBOARD_PASSWORD`,
+  `CRON_SECRET` and `APP_SECRET` (production and preview, encrypted). Values
+  are not recorded here. `LIVE_SEND` is not set, so it stays at its default,
+  false. No Gemini key yet.
+- Production redeployed from `main` (`042874d`) as `dpl_ErCGChDEdjnq4eJLH4R5bub1dgFX`,
+  state READY, aliased to `eduwalls-autogtm-app.vercel.app`. The N7 inbox guard
+  from the entry below is not in production until that branch is merged.
+
+**Verified:** role and schema exist with the expected privileges (queried);
+the four variables were accepted by Vercel; the redeploy built and went READY.
+
+**Unverified:** that the app can actually log in to the database. The pooler
+hostname (`aws-0-us-east-1.pooler.supabase.com`) is the documented pattern but
+could not be tested: this sandbox cannot open Postgres connections, and
+Vercel Authentication refused the tool's bypass link, so no request reached the
+app. The first 09:00 UTC cron will create the tables if the connection works.
+If its logs show "tenant or user not found", the host should be `aws-1-...`.
+
+**Follow-ups:** check the first cron's logs and the `autogtm` tables; then step
+2, the Gemini key and one school in dry run.
+
+---
+
 ## 2026-10-07 — Live sending now requires a readable inbox (N7)
 **Commit:** see this entry's commit  **Spec:** sections 2 (N7 row), 3 (IMAP row), 4 (step 6)
 
