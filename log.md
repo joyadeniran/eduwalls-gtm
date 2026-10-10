@@ -21,6 +21,25 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-10-10 — Warn when testing a key that has not been saved
+**Commit:** see this entry's commit  **Spec:** no change
+
+Joy pasted a Gemini key and clicked Test connection four times; each said "No
+Gemini API key configured", because tests run against saved settings and the
+key had not been saved (the `settings` table was still empty, four
+`settings.tested` events at 09:04). Every Test connection button now refuses
+to run while any secret field holds typed but unsaved text, and says to click
+Save settings first. Dashboard script only; no server change.
+
+Also confirms the entry below: those four tests completed instead of timing
+out, on the session pooler.
+
+**Verified:** the root cause from the database (no settings rows, four test
+events); typecheck and build clean.
+**Unverified:** the new message in a real browser.
+
+---
+
 ## 2026-10-10 — Fix dashboard timeouts: move to Supabase's session pooler
 **Commit:** see this entry's commit  **Spec:** no change
 

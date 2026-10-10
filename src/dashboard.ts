@@ -344,6 +344,10 @@ for (const tab of document.querySelectorAll('.tab')) {
 
 for (const btn of document.querySelectorAll('[data-test]')) {
   btn.onclick = () => run(btn, async () => {
+    // Tests run against saved settings. A typed key is only in the box until
+    // Save settings, so testing it would report "not configured".
+    const unsaved = SECRETS.filter((key) => $('s-' + key) && $('s-' + key).value.trim());
+    if (unsaved.length) throw new Error('You have typed a key that is not saved yet. Click Save settings first, then Test connection.');
     const target = btn.dataset.test;
     const results = await api('/api/settings/test', { method: 'POST', body: JSON.stringify({ target }) });
     for (const [key, r] of Object.entries(results)) {
