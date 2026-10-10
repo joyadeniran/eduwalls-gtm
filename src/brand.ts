@@ -30,7 +30,10 @@ export const VOICE_RULES = `RULES (non-negotiable):
 - Nigerian English conventions. Do not sound American or British.
 - Warm, direct, never salesy.
 - The CTA is always a simple low-friction ask (a call, a visit, a reply).
-- Never invent facts about the school. If something is unverified, stay general rather than guessing.`;
+- Never invent facts about the school. If something is unverified, stay general rather than guessing.
+- Greet a person by name only when a current contact name is given. Otherwise greet the role, for example "Dear Proprietor".
+- Use proof points exactly as written. Never add a date, a number, or words like "recently" to them.
+- No hype or filler. Never write "Imagine", "seamless", "cutting-edge", "game-changer", or "I hope this email finds you well".`;
 
 export const PROGRAMS = [
   'Coding',
@@ -58,6 +61,9 @@ const BANNED_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /—/, reason: 'contains an em dash' },
   { pattern: /\bparents?\b/i, reason: 'references parents; the school is the customer' },
   { pattern: /(NGN|\u20A6)\s?\d{1,3}[,.]?\d{3}/i, reason: 'quotes a price' },
+  { pattern: /\bN\s?\d{1,3}(,\d{3})+/, reason: 'quotes a price' },
+  { pattern: /\bimagine\b|\bseamless(ly)?\b|cutting-edge|game-changer/i, reason: 'uses hype the voice rules ban' },
+  { pattern: /hope this (e-?mail |message )?finds you well/i, reason: 'opens with filler the voice rules ban' },
 ];
 
 /** Returns the reasons a draft violates the brand rules. Empty means clean. */

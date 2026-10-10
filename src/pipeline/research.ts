@@ -1,3 +1,4 @@
+import { Resolver } from 'node:dns/promises';
 import { groundedResearch, generateJson } from '../gemini.js';
 import { COMPANY_CONTEXT, PROGRAMS } from '../brand.js';
 import { sql, logEvent, upsertSchool, updateSchool, type SchoolRow } from '../db.js';
@@ -71,7 +72,9 @@ State clearly which items you could not verify. Do not speculate or fill gaps wi
 - recommended_angle: the single most persuasive way in, given what the notes support.
 - watch_out: the likeliest objection or sensitivity for this specific school.
 - signals: only concrete facts the notes verified. Empty array if none.
-- contact_email, contact_name, website, area: only if the notes give them. Otherwise null.
+- contact_email, website, area: only if the notes give them. Otherwise null.
+- contact_name: only the current proprietor or head, named in a source from the last two years. Null if the name is dated (for example "as of 2014") or the notes are unsure.
+- Never construct an email address from the school name or domain.
 - confidence: how much real, school-specific information the notes contained.`,
     schema: BRIEF_SCHEMA,
     temperature: 0.3,
@@ -83,9 +86,42 @@ State clearly which items you could not verify. Do not speculate or fill gaps wi
   return brief;
 }
 
+/**
+ * N5 gate for any address research produces: well formed, and its domain must
+ * publish a mail server. A domain that cannot receive mail means the address
+ * was invented or is stale, and sending to it would bounce. DNS errors count as
+ * unverified, so the address stays null and can be supplied by hand.
+ */
+export async function acceptableContactEmail(schoolId: number, email: string | null | undefined): Promise<string | null> {
+  if (!email) return null;
+  const address = email.trim().toLowerCase();
+  let reason: string | null = null;
+  if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(address)) {
+    reason = 'not a valid address';
+  } else {
+    const domain = address.split('@')[1]!;
+    try {
+      const resolver = new Resolver({ timeout: 4000, tries: 2 });
+      const mx = await resolver.resolveMx(domain);
+      if (!mx.length) reason = `${domain} publishes no mail server`;
+    } catch (err) {
+      const code = (err as { code?: string }).code ?? 'error';
+      reason = code === 'ENOTFOUND' || code === 'ENODATA'
+        ? `${domain} has no mail server (${code})`
+        : `could not check ${domain} (${code})`;
+    }
+  }
+  if (reason) {
+    await logEvent(schoolId, 'contact.rejected', { email: address, reason });
+    return null;
+  }
+  return address;
+}
+
 export async function runResearch(school: SchoolRow): Promise<ResearchBrief> {
   await updateSchool(school.id, { status: 'researching' });
   const brief = await researchSchool(school);
+  if (!school.contact_email) brief.contact_email = await acceptableContactEmail(school.id, brief.contact_email);
   await updateSchool(school.id, {
     status: 'researched',
     research_json: JSON.stringify(brief),
@@ -179,7 +215,7 @@ export async function findContactEmail(school: SchoolRow): Promise<{ email: stri
   const { text } = await groundedResearch(
     `Find the official contact email address for the private school "${school.name}" in ${school.area ?? 'Lagos'}, Nigeria.
 Check its website contact page, its Facebook or Instagram page, and any school directory listing.
-Also find the name of the proprietor, principal, or head of school.
+Also find the name of the current proprietor, principal, or head of school, and the year of the source that names them.
 Report the exact email address as published. If you cannot find a real published address, say so plainly and do not guess one.`,
   );
 
@@ -187,6 +223,7 @@ Report the exact email address as published. If you cannot find a real published
     prompt: `From these notes, extract the school's official contact email and the head of school's name.
 Set verified to false and email to null unless the notes show an actual published address.
 Never construct an address from the school name or domain.
+Set name to null unless the notes name the current head in a source from the last two years.
 
 NOTES:
 ${text}`,
@@ -202,9 +239,7 @@ ${text}`,
     temperature: 0,
   });
 
-  const email = parsed.verified && parsed.email && /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(parsed.email)
-    ? parsed.email.toLowerCase()
-    : null;
+  const email = parsed.verified ? await acceptableContactEmail(school.id, parsed.email) : null;
 
   if (email || parsed.name) {
     await updateSchool(school.id, {

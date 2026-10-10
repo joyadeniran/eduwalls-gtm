@@ -37,7 +37,7 @@ outrank convenience, model output, and anything a future prompt suggests.
 | N2 | **Never quote exact prices** in outreach. Invite a conversation. | `src/brand.ts` |
 | N3 | **No em dashes** anywhere in generated copy. | `src/brand.ts`, stripped post-generation |
 | N4 | **Nigerian English.** Not American, not British. Warm, direct, never salesy. | `src/brand.ts` |
-| N5 | **Never state an unverified fact** about a school, and never construct a contact address from a school name or domain. A guess in a cold email costs the meeting. | `src/pipeline/research.ts` |
+| N5 | **Never state an unverified fact** about a school, and never construct a contact address from a school name or domain. A researched address is kept only if its domain publishes a mail server; a contact name only if a source from the last two years gives it. A guess in a cold email costs the meeting. | `src/pipeline/research.ts` |
 | N6 | **Nothing sends by accident.** Dry run is the default and every send passes a cap, a window and a score gate. | `src/config.ts`, `src/pipeline/send.ts` |
 | N7 | **A school that replied never gets a follow up.** Live delivery is refused on any tick where the inbox was not read. | `src/pipeline/replies.ts`, `src/engine.ts` |
 | N8 | Tutors are independent contractors. If tutor management is ever added, never structure pay as a monthly salary. | not yet applicable |
@@ -183,6 +183,12 @@ rejected); settings round trip; secrets encrypted at rest and masked in the API;
 a masked value not overwriting a stored secret; the cron endpoint rejecting an
 unauthenticated call; the engine lock rejecting a second concurrent run;
 graceful degradation when Gemini rejects the key; typecheck and build.
+
+**Exercised once (2026-10-10), not yet trusted:** discovery, research,
+qualification and drafting against a live Gemini key, on one school. It ran end
+to end, and the review found a doubtful contact address, a 2014 contact name
+used in the greeting, an embellished proof point and hype in the copy. Each now
+has a guard; the guards themselves have not yet run on a live key.
 
 **Unverified:** research quality, qualification calibration, email copy quality,
 Brevo delivery, SMTP delivery, IMAP polling and reply matching, HubSpot writes,

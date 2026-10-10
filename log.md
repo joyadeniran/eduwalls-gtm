@@ -21,6 +21,60 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-10-10 — First live school reviewed; guards for what it got wrong
+**Commit:** see this entry's commit  **Spec:** sections 2 (N5 row), 9
+
+With a working key Joy ran a cycle at 09:12. Discovery added 10 Festac schools.
+St. Jude Private Schools was researched (confidence "high", 15 signals),
+scored 85 ("pursue") and drafted; its three emails are `queued`, nothing sent.
+Radiance Schools was left `researching` (the run ended mid-research); that
+status is in `dueForWork`, so it is retried, not stuck.
+
+Review against `spec.md` section 2: no prices, no em dashes, nothing
+parent-facing, programmes all on the list, proof points used. Problems:
+1. `contact@sjps.sch.ng` is unverified. Neither the domain nor the address
+   shows up in web search, and `contact@<domain>` is the shape of a constructed
+   address (N5). (An earlier claim in this session that the domain "does not
+   resolve" was wrong: the fetch tool's DNS also failed on `dns.google`.)
+2. The research marked Mrs. Ijeoma Jato as proprietress "as of 2014"; all three
+   drafts greet her by name.
+3. Email 2 says the Christ The Redeemer's training happened "recently"; the
+   proof point gives no date.
+4. Hype and filler: "Imagine seamlessly enhancing", "cutting-edge", "I hope
+   this email finds you well" (N4: warm, direct, never salesy).
+
+Changes:
+- `src/pipeline/research.ts`: `acceptableContactEmail` gates every researched
+  address, in the brief and in the contact pass. It must be well formed and its
+  domain must publish an MX record; otherwise it stays null and a
+  `contact.rejected` event records why. DNS errors count as unverified. An
+  address Joy typed is never re-checked. Prompts now ask for a contact name only
+  from a source in the last two years, and repeat the no-construction rule.
+- `src/brand.ts`: voice rules add greeting the role when no current name is
+  given, proof points exactly as written with no added dates or "recently", and
+  a ban on "Imagine", "seamless", "cutting-edge", "game-changer" and "I hope
+  this email finds you well". `voiceViolations` flags those phrases and prices
+  written as `N167,000` (previously only `NGN`/naira sign).
+
+**Verified:** the review above, from the production `schools`, `emails` and
+`events` rows. `voiceViolations` on St. Jude's actual sentences: email 1 flagged
+for hype, email 3 for filler, `N167,000` flagged as a price, a clean sentence
+passes; email 2's "recently" is not pattern-matched and is left to the prompt
+rule. `acceptableContactEmail` on a throwaway Postgres: a malformed address and
+an unresolvable domain both return null and write `contact.rejected` with the
+reason; null passes through. Typecheck and build clean.
+
+**Unverified:** the accept path of the MX check (this sandbox has no DNS, so
+every lookup fails here; Vercel resolves normally). Whether the new prompt rules
+change Gemini's output. St. Jude's existing drafts and address are untouched
+and still carry problems 1 to 4 until it is re-researched.
+
+**Follow-ups:** `voiceViolations` only logs `compose.voice_warning`; it does not
+block or redraft. Holding a lead whose drafts break N2 or N3 is worth doing
+before go-live.
+
+---
+
 ## 2026-10-10 — Test connection tests what is typed, before saving
 **Commit:** see this entry's commit  **Spec:** no change
 
