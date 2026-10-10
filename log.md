@@ -21,6 +21,32 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-10-10 — Fix the 500 on the dashboard: stop Vercel's Fastify detection
+**Commit:** see this entry's commit  **Spec:** no change (section 6a already says `api/index.js` is the entry)
+
+Joy opened the app and got `500 FUNCTION_INVOCATION_FAILED` on `/`. The
+function logs said: `Invalid export found in module "/var/task/src/server.js".
+The default export must be a function or server.` The Vercel project had been
+auto-detected as framework `fastify`, so Vercel built a second function from
+`src/server.ts` alongside `api/index.js`, and routed `/` to it. That file has
+no default export (it is the long-running entry), so the function crashed on
+load. `/login` and other paths still reached `api/index.js`, which is why the
+login page worked and the dashboard did not.
+
+`vercel.json` now sets `"framework": null`, so the only function is
+`api/index.js` and the rewrite sends every path to it, as spec section 6a
+describes. Pinned in the repo rather than in project settings so it cannot
+drift back.
+
+Also noted from the same logs: the `/api/cron` and `/api/status` requests made
+through the Vercel tool's share link earlier did reach the app (the app's own
+gate answered 401). The tool reported those as blocked, which was wrong.
+
+**Verified:** reproduced the 500 on production `/` before the change.
+**Unverified:** see the follow-up entry above for the post-deploy check.
+
+---
+
 ## 2026-10-10 — Change the dashboard password from Settings
 **Commit:** see this entry's commit  **Spec:** sections 1, 2 (N9 row), 7 (`kv`)
 
