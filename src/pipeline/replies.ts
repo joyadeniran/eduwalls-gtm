@@ -1,7 +1,7 @@
 import { ImapFlow } from 'imapflow';
 import { generateJson } from '../gemini.js';
 import { COMPANY_CONTEXT } from '../brand.js';
-import { getSettings, imapConfiguredIn } from '../settings.js';
+import { getSettings, imapConfiguredIn, type Settings } from '../settings.js';
 import { sql, kvGet, kvSet, logEvent, updateSchool, type SchoolRow, type SchoolStatus } from '../db.js';
 
 export interface ReplyTriage {
@@ -81,6 +81,27 @@ export async function imapConfigured(): Promise<boolean> {
  * Polls the inbox for replies from schools in the pipeline. Optional: without
  * IMAP credentials Joy marks replies by hand in the dashboard.
  */
+/** Logs in and opens INBOX, nothing else: no messages read, no replies recorded. */
+export async function verifyMailbox(settings: Settings): Promise<{ ok: boolean; detail: string }> {
+  if (!imapConfiguredIn(settings)) return { ok: false, detail: 'No mailbox configured. Replies will be invisible.' };
+  const client = new ImapFlow({
+    host: settings.imapHost,
+    port: settings.imapPort,
+    secure: true,
+    auth: { user: settings.imapUser, pass: settings.imapPass },
+    logger: false,
+  });
+  try {
+    await client.connect();
+    const box = await client.mailboxOpen('INBOX', { readOnly: true });
+    return { ok: true, detail: `Mailbox reachable: ${settings.imapUser}, ${box.exists} messages in INBOX.` };
+  } catch (err) {
+    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+  } finally {
+    await client.logout().catch(() => undefined);
+  }
+}
+
 export async function pollInbox(): Promise<{ scanned: number; matched: number }> {
   const settings = await getSettings();
   if (!imapConfiguredIn(settings)) return { scanned: 0, matched: 0 };

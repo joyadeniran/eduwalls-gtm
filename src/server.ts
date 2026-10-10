@@ -4,14 +4,14 @@ import {
   sql, ensureSchema, getSchool, logEvent, sentToday, updateSchool, upsertSchool, kvGet, kvSet, PASSWORD_HASH_KEY,
   type EmailRow, type SchoolRow,
 } from './db.js';
-import { getSettings, settingsForDisplay, saveSettings, transportFor, imapConfiguredIn, readiness } from './settings.js';
+import { getSettings, settingsForDisplay, saveSettings, transportFor, imapConfiguredIn, readiness, withDraft } from './settings.js';
 import { secretsEncrypted, safeEqual, sessionToken, hashPassword, verifyPassword } from './crypto.js';
 import {
   startEngine, stopEngine, engineRunning, safeTick, getLastReport,
   advanceToSequenced, sendNextStep, runTicks,
 } from './engine.js';
 import { discoverSchools } from './pipeline/research.js';
-import { recordReply, pollInbox } from './pipeline/replies.js';
+import { recordReply, verifyMailbox } from './pipeline/replies.js';
 import { verifyTransport } from './pipeline/send.js';
 import { healthCheck } from './gemini.js';
 import { DASHBOARD_HTML } from './dashboard.js';
@@ -169,41 +169,37 @@ export function buildServer(): FastifyInstance {
   });
 
   /** Tests each connection with the credentials currently saved. */
-  app.post<{ Body: { target?: string } }>('/api/settings/test', async (req) => {
+  // Tests what is in the form, saved or not, so a key can be checked before it
+  // replaces a working one. The draft is never stored.
+  app.post<{ Body: { target?: string; draft?: Record<string, unknown> } }>('/api/settings/test', async (req) => {
     await ensureSchema();
     const target = req.body?.target ?? 'all';
-    const s = await getSettings(true);
+    const s = withDraft(await getSettings(true), req.body?.draft);
     const results: Record<string, { ok: boolean; detail: string }> = {};
 
     if (target === 'all' || target === 'gemini') {
-      const h = await healthCheck();
-      results.gemini = { ok: h.ok, detail: h.detail };
+      results.gemini = await healthCheck(s);
     }
     if (target === 'all' || target === 'email') {
-      results.email = await verifyTransport().then((r) => ({ ok: r.ok, detail: r.detail }));
+      results.email = await verifyTransport(s).then((r) => ({ ok: r.ok, detail: r.detail }));
     }
     if (target === 'all' || target === 'imap') {
-      if (!imapConfiguredIn(s)) {
-        results.imap = { ok: false, detail: 'No mailbox configured. Replies will be invisible.' };
-      } else {
-        try {
-          const r = await pollInbox();
-          results.imap = { ok: true, detail: `Mailbox reachable. Scanned ${r.scanned} new messages, matched ${r.matched}.` };
-        } catch (err) {
-          results.imap = { ok: false, detail: err instanceof Error ? err.message : String(err) };
-        }
-      }
+      results.imap = await verifyMailbox(s);
     }
     if (target === 'all' || target === 'hubspot') {
       if (!s.hubspotToken) {
         results.hubspot = { ok: false, detail: 'No HubSpot token. Nothing is mirrored to the CRM.' };
       } else {
-        const res = await fetch('https://api.hubapi.com/crm/v3/objects/companies?limit=1', {
-          headers: { authorization: `Bearer ${s.hubspotToken}` },
-        });
-        results.hubspot = res.ok
-          ? { ok: true, detail: 'HubSpot token accepted.' }
-          : { ok: false, detail: `HubSpot rejected the token: ${res.status} ${(await res.text()).slice(0, 160)}` };
+        try {
+          const res = await fetch('https://api.hubapi.com/crm/v3/objects/companies?limit=1', {
+            headers: { authorization: `Bearer ${s.hubspotToken}` },
+          });
+          results.hubspot = res.ok
+            ? { ok: true, detail: 'HubSpot token accepted.' }
+            : { ok: false, detail: `HubSpot rejected the token: ${res.status} ${(await res.text()).slice(0, 160)}` };
+        } catch (err) {
+          results.hubspot = { ok: false, detail: `Could not reach HubSpot: ${err instanceof Error ? err.message : String(err)}` };
+        }
       }
     }
     await logEvent(null, 'settings.tested', results);

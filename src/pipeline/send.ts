@@ -71,23 +71,32 @@ export async function deliver(to: string, subject: string, body: string): Promis
   return transport === 'brevo' ? sendViaBrevo(s, to, subject, body) : sendViaSmtp(s, to, subject, body);
 }
 
-/** Verifies credentials without sending anything to a school. */
-export async function verifyTransport(): Promise<{ ok: boolean; transport: string; detail: string }> {
-  const s = await getSettings();
-  const transport = transportFor(s);
+/**
+ * Verifies credentials without sending anything to a school. Checks the
+ * configured Brevo or SMTP account even while live sending is off, so a bad
+ * key shows up now rather than on the day sending goes live.
+ */
+export async function verifyTransport(settings?: Settings): Promise<{ ok: boolean; transport: string; detail: string }> {
+  const s = settings ?? (await getSettings());
+  const transport = transportFor({ ...s, liveSend: true });
+  const mode = s.liveSend ? '' : ' Live sending is off, so nothing is delivered yet.';
   if (transport === 'dry-run') {
-    return { ok: true, transport, detail: 'Dry run. Nothing will be delivered until live sending is enabled.' };
+    return { ok: false, transport, detail: `No Brevo key or SMTP host configured, so nothing can be delivered.${mode}` };
   }
   if (transport === 'brevo') {
-    const res = await fetch('https://api.brevo.com/v3/account', { headers: { 'api-key': s.brevoApiKey, accept: 'application/json' } });
-    const body = await res.text();
-    return res.ok
-      ? { ok: true, transport, detail: `Brevo account reachable, sending as ${s.fromName} <${s.fromEmail}>` }
-      : { ok: false, transport, detail: `Brevo rejected the key: ${res.status} ${body.slice(0, 200)}` };
+    try {
+      const res = await fetch('https://api.brevo.com/v3/account', { headers: { 'api-key': s.brevoApiKey, accept: 'application/json' } });
+      const body = await res.text();
+      return res.ok
+        ? { ok: true, transport, detail: `Brevo account reachable, sending as ${s.fromName} <${s.fromEmail}>.${mode}` }
+        : { ok: false, transport, detail: `Brevo rejected the key: ${res.status} ${body.slice(0, 200)}` };
+    } catch (err) {
+      return { ok: false, transport, detail: `Could not reach Brevo: ${err instanceof Error ? err.message : String(err)}` };
+    }
   }
   try {
     await smtpTransport(s).verify();
-    return { ok: true, transport, detail: `SMTP login succeeded on ${s.smtpHost}:${s.smtpPort}` };
+    return { ok: true, transport, detail: `SMTP login succeeded on ${s.smtpHost}:${s.smtpPort}.${mode}` };
   } catch (err) {
     return { ok: false, transport, detail: err instanceof Error ? err.message : String(err) };
   }

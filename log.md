@@ -21,6 +21,47 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-10-10 — Test connection tests what is typed, before saving
+**Commit:** see this entry's commit  **Spec:** no change
+
+Joy's 09:07 save stored a Gemini key that worked; a re-paste at 09:08 replaced
+it with one Google rejects (`API_KEY_INVALID`). Testing only saved settings
+forced save-then-test, so a bad paste overwrote a good key unnoticed. Joy asked
+whether a key should be tested before saving. Yes.
+
+- `POST /api/settings/test` takes an optional `draft` of form values. They are
+  laid over saved settings for the test only (`withDraft` in
+  `src/settings.ts`) and never stored. Blank and masked values fall through to
+  the saved ones; booleans are ignored, so a test cannot switch on live
+  sending. The dashboard sends whatever is typed. This replaces the "save
+  first" warning from the entry below.
+- Email test (`verifyTransport`) now checks the configured Brevo or SMTP
+  account even while live sending is off. Before, dry run returned "OK" without
+  contacting Brevo, so a bad key would surface only on go-live day.
+- Mailbox test is now login-only (`verifyMailbox`: connect, open INBOX
+  read-only, log out). Before, it ran the real reply poll, which records
+  replies and advances the IMAP high water mark.
+- A network failure reaching Brevo or HubSpot is now reported as a failed test
+  instead of a 500 on the whole request.
+- `healthCheck` and `verifyTransport` accept settings, defaulting to saved ones,
+  so `npm run agent -- test` is unchanged.
+
+**Verified** against the built server in production mode on a throwaway local
+Postgres: Gemini with nothing typed reports no key; with a typed fake key,
+Google answers `API key not valid`, so the typed value reached Google; email
+with nothing configured fails with the new message; email with a typed fake
+Brevo key and `liveSend: "true"` in the draft returns a failed test, not a 500;
+mailbox pointed at `127.0.0.1:1` fails with `ECONNREFUSED`; HubSpot network
+failure returns a failed test; afterwards `settings` has 0 rows, no `imap:` kv
+row exists, and no test event contains either fake key. Typecheck, build and a
+parse of the dashboard script clean.
+
+**Unverified:** Brevo's and HubSpot's answer to a wrong key (this sandbox cannot
+reach either host, so only the unreachable path ran); a real IMAP login; the
+form in a real browser.
+
+---
+
 ## 2026-10-10 — Cap Gemini thinking so answers are not starved
 **Commit:** see this entry's commit  **Spec:** no change
 

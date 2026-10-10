@@ -1,10 +1,10 @@
 import { GoogleGenAI } from '@google/genai';
-import { getSettings } from './settings.js';
+import { getSettings, type Settings } from './settings.js';
 
 const clients = new Map<string, GoogleGenAI>();
 
-async function ai(): Promise<{ client: GoogleGenAI; research: string; writer: string }> {
-  const s = await getSettings();
+async function ai(settings?: Settings): Promise<{ client: GoogleGenAI; research: string; writer: string }> {
+  const s = settings ?? (await getSettings());
   if (!s.geminiApiKey) {
     throw new Error('No Gemini API key configured. Add one in Settings, or set GEMINI_API_KEY.');
   }
@@ -103,9 +103,9 @@ export async function generateJson<T>(opts: {
   }
 }
 
-export async function healthCheck(): Promise<{ ok: boolean; detail: string }> {
+export async function healthCheck(settings?: Settings): Promise<{ ok: boolean; detail: string }> {
   try {
-    const { client, writer } = await ai();
+    const { client, writer } = await ai(settings);
     const res = await client.models.generateContent({
       model: writer,
       contents: 'Reply with the single word: ok',

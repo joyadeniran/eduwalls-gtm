@@ -141,6 +141,27 @@ export function invalidateSettings(): void {
 
 const EDITABLE = new Set<string>([...Object.keys(defaults())]);
 
+/**
+ * Saved settings with unsaved form values laid over them, for Test connection
+ * only. Never persisted. Blank and masked values fall through to the saved
+ * value; booleans are ignored, so a test can never switch on live sending.
+ */
+export function withDraft(saved: Settings, draft: Record<string, unknown> | undefined): Settings {
+  const merged = { ...saved } as unknown as Record<string, unknown>;
+  for (const [key, raw] of Object.entries(draft ?? {})) {
+    if (!EDITABLE.has(key) || BOOL_KEYS.includes(key as BoolKey)) continue;
+    const value = String(raw ?? '').trim();
+    if (value === '' || /^[*]+$/.test(value)) continue;
+    if (NUM_KEYS.includes(key as NumKey)) {
+      const n = Number(value);
+      if (Number.isFinite(n)) merged[key] = n;
+    } else {
+      merged[key] = value;
+    }
+  }
+  return merged as unknown as Settings;
+}
+
 /** Writes settings from the dashboard. Empty string clears back to the env value. */
 export async function saveSettings(patch: Record<string, unknown>): Promise<string[]> {
   const s = sql();

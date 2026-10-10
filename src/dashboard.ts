@@ -344,12 +344,14 @@ for (const tab of document.querySelectorAll('.tab')) {
 
 for (const btn of document.querySelectorAll('[data-test]')) {
   btn.onclick = () => run(btn, async () => {
-    // Tests run against saved settings. A typed key is only in the box until
-    // Save settings, so testing it would report "not configured".
-    const unsaved = SECRETS.filter((key) => $('s-' + key) && $('s-' + key).value.trim());
-    if (unsaved.length) throw new Error('You have typed a key that is not saved yet. Click Save settings first, then Test connection.');
+    // Test what is in the form, saved or not. Nothing here is saved.
+    const draft = {};
+    for (const key of FIELDS) {
+      const el = $('s-' + key);
+      if (el && !BOOLS.includes(key) && el.value.trim()) draft[key] = el.value.trim();
+    }
     const target = btn.dataset.test;
-    const results = await api('/api/settings/test', { method: 'POST', body: JSON.stringify({ target }) });
+    const results = await api('/api/settings/test', { method: 'POST', body: JSON.stringify({ target, draft }) });
     for (const [key, r] of Object.entries(results)) {
       const el = $('t-' + key);
       if (el) { el.className = 'test ' + (r.ok ? 'ok' : 'err'); el.textContent = (r.ok ? 'OK. ' : 'Failed. ') + r.detail; }
