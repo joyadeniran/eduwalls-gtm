@@ -21,6 +21,26 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-10-10 — Live sending switched on, Joy's decision
+**Commit:** see this entry's commit  **Spec:** no change
+
+Joy: "Live sending must be live!!!! Turn it on." At 09:44:45 UTC `liveSend`
+was set to `true` in the production `settings` table, with a
+`settings.updated` event. This is the N6 decision CLAUDE.md reserves for Joy,
+taken before the planned multi-day dry-run review (go-live step 4).
+
+State at the time: Brevo key saved and tested OK at 09:18; IMAP set to
+`imap.hostinger.com` as `tutor@myeduwalls.com` (09:20); From address and
+Reply-to empty. Guard rails unchanged: 25/day, 5/tick, 08:00 to 17:00 WAT
+Mon to Fri, minimum score 60. St. Jude Private Schools has three queued drafts
+written before the new voice and contact rules, addressed to the unverified
+`contact@sjps.sch.ng`.
+
+**Verified:** `liveSend` reads `true`.
+**Unverified:** a real send through Brevo; the IMAP login; reply matching.
+
+---
+
 ## 2026-10-10 — Live sending switched off again, at Joy's request
 **Commit:** see this entry's commit  **Spec:** no change
 
