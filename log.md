@@ -49,8 +49,14 @@ Also noted from the same logs: the `/api/cron` and `/api/status` requests made
 through the Vercel tool's share link earlier did reach the app (the app's own
 gate answered 401). The tool reported those as blocked, which was wrong.
 
-**Verified:** reproduced the 500 on production `/` before the change.
-**Unverified:** see the follow-up entry above for the post-deploy check.
+**Verified:** reproduced the 500 on production `/` before the change. On the
+preview of the final config (`dpl_A6WzF6TCTMbyUgYDrT92QWxMeSck`): `/` returns the
+login page (200, after the app's redirect) instead of 500; `/api/status` and
+`/api/cron` are refused with 401 by the app's own gate; `/dist/server.js` gets
+the login page, so no compiled code is served; `/robots.txt` is served
+statically. Typecheck and build clean.
+**Unverified:** the same checks on production after this merge, which the
+next entry or the session reply records.
 
 ---
 
