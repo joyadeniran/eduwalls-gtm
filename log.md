@@ -38,6 +38,12 @@ login page worked and the dashboard did not.
 describes. Pinned in the repo rather than in project settings so it cannot
 drift back.
 
+With no framework, Vercel requires a static output directory (the first
+preview failed with `STATIC_BUILD_NO_OUT_DIR`). The build now creates an empty
+`static-empty/` and points `outputDirectory` at it. It is deliberately empty
+and gitignored: `dist/` was not used because static files are served before
+the app's auth gate, which would publish the compiled server (N9).
+
 Also noted from the same logs: the `/api/cron` and `/api/status` requests made
 through the Vercel tool's share link earlier did reach the app (the app's own
 gate answered 401). The tool reported those as blocked, which was wrong.
