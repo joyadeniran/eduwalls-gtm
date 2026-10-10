@@ -21,6 +21,37 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-10-10 — Fix dashboard timeouts: move to Supabase's session pooler
+**Commit:** see this entry's commit  **Spec:** no change
+
+Joy tried to save and test a Gemini key and got `FUNCTION_INVOCATION_TIMEOUT`.
+Nothing had reached Gemini and no setting was saved.
+
+Function logs showed the pattern: on each fresh instance, `/api/schools` and
+`/api/events` finished in 10-50 ms, then `/api/status` hung straight after the
+schema check, and every later request on that instance hung to the 60 second
+limit (status, settings, settings/test, schools, events). `/api/status` is the
+handler that runs two queries at once (`Promise.all`). On serverless the client
+has one connection (`max: 1`), so both were pipelined on it, and Supabase's
+transaction-mode pooler (port 6543) never answered. With one connection, that
+blocked the instance.
+
+`DATABASE_URL` on Vercel now points at the session pooler, port 5432, same host
+and role. Session mode keeps one server connection per client connection, so
+pipelining works. The engine lock is a row, not a session lock, so it is
+unaffected. `src/db.ts` comment updated to say why. This entry's commit is what
+redeploys production with the new value.
+
+**Verified:** the diagnosis from the production logs above; typecheck and build
+clean.
+**Unverified:** that the session pooler fixes it. Checked after the deploy, see
+the session reply. Not reproduced locally: the sandbox cannot reach Supabase.
+
+**Follow-ups:** queries have no client-side timeout, so any future hang still
+burns the full 60 seconds. Worth a short timeout if it recurs.
+
+---
+
 ## 2026-10-10 — Fix the 500 on the dashboard: stop Vercel's Fastify detection
 **Commit:** see this entry's commit  **Spec:** no change (section 6a already says `api/index.js` is the entry)
 

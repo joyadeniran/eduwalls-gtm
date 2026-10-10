@@ -57,7 +57,10 @@ export function sql(): postgres.Sql {
       max: env.isServerless ? 1 : 10,
       idle_timeout: 20,
       connect_timeout: 15,
-      prepare: false, // required for transaction-mode poolers such as PgBouncer
+      // Harmless on a session pooler, required on a transaction-mode one. Use
+      // Supabase's session pooler (port 5432): its transaction mode (6543) hung
+      // on two queries in flight on this single connection.
+      prepare: false,
     });
   }
   return sqlClient;
