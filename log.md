@@ -21,6 +21,26 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-10-10 — Live sending switched off again, at Joy's request
+**Commit:** see this entry's commit  **Spec:** no change
+
+Joy's 09:17 settings save stored `liveSend = true` (the Live sending box was
+ticked). Nothing could send: no mailbox is connected, so the N7 guard refuses
+live delivery; the From address is empty; and it is the weekend. Asked whether
+that was intended before the dry-run review (go-live steps 3 to 5), Joy said
+"untick it for now". At 09:43 UTC `liveSend` was set back to `false` in the
+production `settings` table, with a `settings.updated` event saying so.
+
+To make that write, the `postgres` admin role was granted membership of the
+app role (`GRANT autogtm TO postgres`): it could read the app's tables but not
+write them. This gives the Supabase SQL editor the same access; it changes
+nothing for the app.
+
+**Verified:** `liveSend` reads `false`, updated 09:43:00 UTC.
+**Unverified:** nothing further; this is a data change only.
+
+---
+
 ## 2026-10-10 — First live school reviewed; guards for what it got wrong
 **Commit:** see this entry's commit  **Spec:** sections 2 (N5 row), 9
 
