@@ -54,8 +54,13 @@ Vercel Authentication refused the tool's bypass link, so no request reached the
 app. The first 09:00 UTC cron will create the tables if the connection works.
 If its logs show "tenant or user not found", the host should be `aws-1-...`.
 
-**Follow-ups:** check the first cron's logs and the `autogtm` tables; then step
-2, the Gemini key and one school in dry run.
+**Follow-ups:** step 2, the Gemini key and one school in dry run.
+
+**Later the same day:** connection confirmed. After `main` was fast-forwarded
+to this branch and deployed (`953289a`, READY), the app created all six tables
+in the `autogtm` schema (queried: `emails`, `engine_lock`, `events`, `kv`,
+`schools`, `settings`), so the `aws-0` pooler host is correct. No settings
+saved, no schools, nothing sent at that point.
 
 ---
 
