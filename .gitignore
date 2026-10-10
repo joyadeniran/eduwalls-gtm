@@ -7,4 +7,3 @@ dist/
 *.db-shm
 data/
 .DS_Store
-static-empty/
