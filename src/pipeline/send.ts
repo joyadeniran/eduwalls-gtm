@@ -102,6 +102,37 @@ export async function verifyTransport(settings?: Settings): Promise<{ ok: boolea
   }
 }
 
+/**
+ * One email to an address the operator typed, from Settings. Never touches the
+ * pipeline: no school, no emails row, no daily cap, no CRM. Delivers even while
+ * live sending is off, because it is an explicit click to the operator's own
+ * address, never to a school.
+ */
+export async function sendTestEmail(to: string): Promise<SendResult> {
+  const s = await getSettings(true);
+  const transport = transportFor({ ...s, liveSend: true });
+  if (transport === 'dry-run') return { ok: false, transport, messageId: null, error: 'No Brevo key or SMTP host is saved.' };
+  if (!s.fromEmail) return { ok: false, transport, messageId: null, error: 'No From address is saved.' };
+  const subject = 'Eduwalls AutoGTM test email';
+  const body = `This is a test from Eduwalls AutoGTM.
+
+It was sent through ${transport === 'brevo' ? 'Brevo' : `SMTP (${s.smtpHost})`} as ${s.fromName} <${s.fromEmail}>.
+Replies go to ${s.replyTo || s.fromEmail}. If that is not the mailbox connected in Settings, the agent cannot see replies.
+
+Joy Adeniran
+CEO, Eduwalls Africa
+myeduwalls.com`;
+  try {
+    const result = transport === 'brevo' ? await sendViaBrevo(s, to, subject, body) : await sendViaSmtp(s, to, subject, body);
+    await logEvent(null, result.ok ? 'email.test_sent' : 'email.test_failed', { to, transport, error: result.error });
+    return result;
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    await logEvent(null, 'email.test_failed', { to, transport, error });
+    return { ok: false, transport, messageId: null, error };
+  }
+}
+
 export class DailyCapReached extends Error {
   constructor(cap: number) {
     super(`Daily send cap of ${cap} reached`);

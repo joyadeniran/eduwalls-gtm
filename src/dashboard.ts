@@ -147,6 +147,9 @@ export const DASHBOARD_HTML = String.raw`<!doctype html>
       </div>
       <div class="row-check"><input type="checkbox" id="s-liveSend" /><label style="margin:0">Live sending. Off means everything runs except delivery.</label></div>
       <button class="ghost" data-test="email">Test connection</button><div class="test" id="t-email"></div>
+      <label>Send a test email to</label><input id="test-to" placeholder="you@example.com" />
+      <div class="hint">Sends one real email using the saved settings. Save first. No school is involved and nothing counts towards the daily cap.</div>
+      <button class="ghost" id="btn-test-send">Send test email</button><div class="test" id="t-send"></div>
     </div>
 
     <div class="card">
@@ -360,6 +363,12 @@ for (const btn of document.querySelectorAll('[data-test]')) {
 }
 
 $('btn-save').onclick = () => run($('btn-save'), saveSettingsForm);
+
+$('btn-test-send').onclick = () => run($('btn-test-send'), async () => {
+  const r = await api('/api/settings/test-send', { method: 'POST', body: JSON.stringify({ to: $('test-to').value.trim() }) });
+  $('t-send').className = 'test ' + (r.ok ? 'ok' : 'err');
+  $('t-send').textContent = r.detail;
+});
 
 $('btn-password').onclick = () => run($('btn-password'), async () => {
   if ($('pw-next').value !== $('pw-repeat').value) throw new Error('The new passwords do not match.');

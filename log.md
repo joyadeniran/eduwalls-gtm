@@ -21,6 +21,32 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-10-10 — Send a test email to yourself from Settings
+**Commit:** see this entry's commit  **Spec:** no change
+
+Joy asked whether she could email herself as a test. The only route was adding
+herself as a school and pressing Send next email, which counts towards the cap,
+can create a HubSpot company and deal, and schedules follow ups 2 and 3.
+
+New `POST /api/settings/test-send` and a "Send test email" field and button
+in the Sender card. `sendTestEmail` in `src/pipeline/send.ts` sends one fixed
+message to the typed address through the saved Brevo or SMTP settings, stating
+the From and Reply-to it used. It creates no school or `emails` row, skips the
+cap and the CRM, and logs `email.test_sent` or `email.test_failed`. It delivers
+even with live sending off: an explicit click to an address the operator
+typed, never a school (N6 is about accidental sends to schools).
+
+**Verified** against the built server on a throwaway Postgres: an invalid
+address gets 400; with nothing configured, "No Brevo key or SMTP host is
+saved"; with a fake Brevo key and From address, the unreachable-network case
+returns a failed result instead of crashing; afterwards 0 schools, 0 emails,
+one `email.test_failed` event. Typecheck, build and dashboard script parse
+clean.
+**Unverified:** a real delivery through Brevo (this sandbox cannot reach it).
+Joy's first test from production is that check.
+
+---
+
 ## 2026-10-10 — Live sending switched on, Joy's decision
 **Commit:** see this entry's commit  **Spec:** no change
 

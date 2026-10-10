@@ -12,7 +12,7 @@ import {
 } from './engine.js';
 import { discoverSchools } from './pipeline/research.js';
 import { recordReply, verifyMailbox } from './pipeline/replies.js';
-import { verifyTransport } from './pipeline/send.js';
+import { verifyTransport, sendTestEmail } from './pipeline/send.js';
 import { healthCheck } from './gemini.js';
 import { DASHBOARD_HTML } from './dashboard.js';
 
@@ -207,6 +207,15 @@ export function buildServer(): FastifyInstance {
   });
 
   // --- schools -----------------------------------------------------------
+  // Sends one email to an address Joy types. Uses saved settings only.
+  app.post<{ Body: { to?: string } }>('/api/settings/test-send', async (req, reply) => {
+    await ensureSchema();
+    const to = (req.body?.to ?? '').trim();
+    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(to)) return reply.code(400).send({ error: 'Type a valid email address to send the test to.' });
+    const result = await sendTestEmail(to);
+    return { ok: result.ok, detail: result.ok ? `Sent to ${to} via ${result.transport}. Check that inbox, including spam.` : `Not sent: ${result.error}` };
+  });
+
   app.get<{ Querystring: { status?: string; limit?: string } }>('/api/schools', async (req) => {
     await ensureSchema();
     const limit = Math.min(Number(req.query.limit ?? 200), 500);
