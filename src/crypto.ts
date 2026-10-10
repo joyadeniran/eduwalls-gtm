@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { env } from './config.js';
 
 const PREFIX = 'enc:v1:';
@@ -37,6 +37,25 @@ export function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ha, hb);
 }
 
-export function sessionToken(): string {
-  return createHash('sha256').update(`${env.dashboardPassword}:${env.appSecret || 'autogtm'}`).digest('hex');
+/** One-way hash for a dashboard password changed in the app. Never reversible. */
+export function hashPassword(plain: string): string {
+  const salt = randomBytes(16);
+  const hash = scryptSync(plain, salt, 32);
+  return `scrypt:v1:${salt.toString('base64')}:${hash.toString('base64')}`;
+}
+
+export function verifyPassword(plain: string, stored: string): boolean {
+  const [scheme, version, saltB64, hashB64] = stored.split(':');
+  if (scheme !== 'scrypt' || version !== 'v1' || !saltB64 || !hashB64) return false;
+  const expected = Buffer.from(hashB64, 'base64');
+  const actual = scryptSync(plain, Buffer.from(saltB64, 'base64'), expected.length);
+  return timingSafeEqual(actual, expected);
+}
+
+/**
+ * Derived from the active credential, so changing the password invalidates
+ * every existing session cookie.
+ */
+export function sessionToken(credential: string): string {
+  return createHash('sha256').update(`${credential}:${env.appSecret || 'autogtm'}`).digest('hex');
 }

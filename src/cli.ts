@@ -7,8 +7,9 @@
  *   npm run agent -- status
  *   npm run agent -- show 3
  *   npm run agent -- test
+ *   npm run agent -- reset-password   (back to DASHBOARD_PASSWORD from the env)
  */
-import { closeDb, ensureSchema, getSchool, sql, sentToday, upsertSchool, type EmailRow, type SchoolRow } from './db.js';
+import { closeDb, ensureSchema, getSchool, logEvent, PASSWORD_HASH_KEY, sql, sentToday, upsertSchool, type EmailRow, type SchoolRow } from './db.js';
 import { getSettings, transportFor, imapConfiguredIn, readiness } from './settings.js';
 import { advanceToSequenced, safeTick, sendNextStep } from './engine.js';
 import { discoverSchools } from './pipeline/research.js';
@@ -95,6 +96,12 @@ async function main(): Promise<void> {
       const s = await getSettings();
       console.log(`Mailbox:   ${imapConfiguredIn(s) ? 'configured' : 'not connected, replies are invisible'}`);
       console.log(`HubSpot:   ${s.hubspotToken ? 'configured' : 'not connected'}`);
+      break;
+    }
+    case 'reset-password': {
+      await sql()`DELETE FROM kv WHERE key = ${PASSWORD_HASH_KEY}`;
+      await logEvent(null, 'password.reset', {});
+      console.log('Dashboard password reset. DASHBOARD_PASSWORD from the environment works again.');
       break;
     }
     case 'status':

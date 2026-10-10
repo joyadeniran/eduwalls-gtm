@@ -2,7 +2,7 @@
 
 **Status:** v2, deployed to Vercel. Unverified against a live Gemini key.
 **Owner:** Joy Adeniran, CEO, Eduwalls Africa Ltd
-**Last updated:** 2026-10-07
+**Last updated:** 2026-10-10
 
 This document is the source of truth for what this system is and is not. Code
 that contradicts this file is a bug in one of the two. Resolve it before
@@ -19,7 +19,11 @@ outreach pipeline end to end without a human in the loop for each step:
 
 It is Joy's internal ops tool. It is not a product and not multi-user. It is
 deployed on the public internet, so it sits behind a single shared password
-(`DASHBOARD_PASSWORD`). That is a deployment necessity, not a user system. Do
+(`DASHBOARD_PASSWORD`). That is a deployment necessity, not a user system.
+The password can be changed in Settings; the new one is stored as a scrypt
+hash in `kv` and overrides the env var, and changing it signs out every other
+session. `npm run agent -- reset-password` (or deleting the
+`dashboard_password_hash` row from `kv`) restores the env var's password. Do
 not add tenancy or per-user accounts without a decision recorded in `log.md`.
 
 ## 2. Non-negotiables
@@ -37,7 +41,7 @@ outrank convenience, model output, and anything a future prompt suggests.
 | N6 | **Nothing sends by accident.** Dry run is the default and every send passes a cap, a window and a score gate. | `src/config.ts`, `src/pipeline/send.ts` |
 | N7 | **A school that replied never gets a follow up.** Live delivery is refused on any tick where the inbox was not read. | `src/pipeline/replies.ts`, `src/engine.ts` |
 | N8 | Tutors are independent contractors. If tutor management is ever added, never structure pay as a monthly salary. | not yet applicable |
-| N9 | **The deployment is never open.** In production the server refuses to serve at all without `DASHBOARD_PASSWORD`, and the cron endpoint requires `CRON_SECRET`. Never serve the dashboard from a static directory, which would bypass the gate. | `src/server.ts` |
+| N9 | **The deployment is never open.** In production the server refuses to serve at all without `DASHBOARD_PASSWORD`, even when a changed password is stored, and the cron endpoint requires `CRON_SECRET`. Never serve the dashboard from a static directory, which would bypass the gate. | `src/server.ts` |
 
 Proof points available for copy: BOVIC renewal after Term 1; AI Literacy and
 Google Workspace teacher training at Christ The Redeemer's School, Oworonshoki;
@@ -145,7 +149,7 @@ on first request, so there is no migration step to run.
 - `emails` — one row per step, unique on `(school_id, step)`. `sent_at` drives
   the daily cap.
 - `events` — append-only audit trail. Every decision the agent makes lands here.
-- `kv` — small runtime state, currently the IMAP high water mark.
+- `kv` — small runtime state: the IMAP high water mark, and the hash of a dashboard password changed in the app.
 - `settings` — operator-editable configuration. Secrets encrypted at rest.
 - `engine_lock` — the single-row cross-process lock that prevents double sends.
 

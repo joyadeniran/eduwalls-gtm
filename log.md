@@ -21,6 +21,47 @@ same commit and say so in the entry.
 
 ---
 
+## 2026-10-10 — Change the dashboard password from Settings
+**Commit:** see this entry's commit  **Spec:** sections 1, 2 (N9 row), 7 (`kv`)
+
+Joy lost the generated password and asked for a way to change it without
+editing Vercel and redeploying.
+
+- Settings has a new **Dashboard password** card: current password, new
+  password twice, at least 12 characters. `POST /api/password` checks the
+  current one, stores the new one as a scrypt hash in `kv`
+  (`dashboard_password_hash`), and logs `password.changed`.
+- The stored hash overrides `DASHBOARD_PASSWORD`. The env var is still required
+  in production (N9 is unchanged: no env var, no service) and is the recovery
+  path: `npm run agent -- reset-password` deletes the hash, logs
+  `password.reset`, and the env password works again.
+- The session token is now derived from the active credential, so a change
+  signs out every other browser. The changing browser gets a fresh cookie.
+  Other serverless instances can honour the old cookie for up to 15 seconds,
+  the same cache window settings use.
+- The lookup fails closed: if the database cannot be read, the request errors
+  rather than falling back to the env password.
+- Unrelated to the code: Joy has the generated password again, and is told how
+  to update the Brevo key in Settings.
+
+**Verified** against the built server (`dist/server.js`) in production mode on a
+throwaway local Postgres 16: env password login 200; status with that session
+200; change with a wrong current password 403; with a 5 character new one 400;
+valid change 200; the pre-change cookie then 401; the cookie issued by the
+change 200; old password login 401; new password login 200; Bearer with the new
+password 200; no session 401; the `kv` value starts `scrypt:v1:` and does not
+contain the plaintext; `password.changed` event written. After
+`reset-password` and a restart: env password login 200, changed password 401.
+With `DASHBOARD_PASSWORD` empty in production: 503. Typecheck and build clean.
+
+**Unverified:** the Settings card in a real browser (the endpoint behind it was
+exercised with curl, not by clicking), and the up-to-15-second cross-instance
+window on Vercel.
+
+**Follow-ups:** none.
+
+---
+
 ## 2026-10-10 — Production database and environment variables
 **Commit:** see this entry's commit  **Spec:** no change
 

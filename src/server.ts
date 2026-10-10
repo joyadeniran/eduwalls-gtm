@@ -1,11 +1,11 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { env } from './config.js';
 import {
-  sql, ensureSchema, getSchool, logEvent, sentToday, updateSchool, upsertSchool,
+  sql, ensureSchema, getSchool, logEvent, sentToday, updateSchool, upsertSchool, kvGet, kvSet, PASSWORD_HASH_KEY,
   type EmailRow, type SchoolRow,
 } from './db.js';
 import { getSettings, settingsForDisplay, saveSettings, transportFor, imapConfiguredIn, readiness } from './settings.js';
-import { secretsEncrypted, safeEqual, sessionToken } from './crypto.js';
+import { secretsEncrypted, safeEqual, sessionToken, hashPassword, verifyPassword } from './crypto.js';
 import {
   startEngine, stopEngine, engineRunning, safeTick, getLastReport,
   advanceToSequenced, sendNextStep, runTicks,
@@ -17,16 +17,44 @@ import { healthCheck } from './gemini.js';
 import { DASHBOARD_HTML } from './dashboard.js';
 
 const COOKIE = 'autogtm_session';
+const MIN_PASSWORD_LENGTH = 12;
 
-function isAuthed(req: FastifyRequest): boolean {
+// A password changed in the dashboard is stored hashed in kv and overrides
+// DASHBOARD_PASSWORD. The env var stays required (N9) and is the way back in:
+// clearing the stored hash restores it. Cached briefly, like settings.
+let passwordCache: { at: number; hash: string | null } | null = null;
+
+async function storedPasswordHash(): Promise<string | null> {
+  if (passwordCache && Date.now() - passwordCache.at < 15_000) return passwordCache.hash;
+  await ensureSchema();
+  const hash = await kvGet(PASSWORD_HASH_KEY);
+  passwordCache = { at: Date.now(), hash };
+  return hash;
+}
+
+async function passwordMatches(candidate: string): Promise<boolean> {
+  if (!candidate || !env.dashboardPassword) return false;
+  const hash = await storedPasswordHash();
+  return hash ? verifyPassword(candidate, hash) : safeEqual(candidate, env.dashboardPassword);
+}
+
+async function currentSessionToken(): Promise<string> {
+  return sessionToken((await storedPasswordHash()) ?? env.dashboardPassword);
+}
+
+function sessionCookie(token: string): string {
+  return `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${env.isProduction ? '; Secure' : ''}`;
+}
+
+async function isAuthed(req: FastifyRequest): Promise<boolean> {
   if (!env.dashboardPassword) return !env.isProduction; // open only for local dev
   const cookie = req.headers.cookie ?? '';
   const match = cookie.match(new RegExp(`${COOKIE}=([^;]+)`));
-  if (match?.[1] && safeEqual(match[1], sessionToken())) return true;
+  if (match?.[1] && safeEqual(match[1], await currentSessionToken())) return true;
 
   const auth = req.headers.authorization ?? '';
   const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  return Boolean(bearer) && safeEqual(bearer, env.dashboardPassword);
+  return passwordMatches(bearer);
 }
 
 function cronAuthorised(req: FastifyRequest): boolean {
@@ -52,7 +80,7 @@ export function buildServer(): FastifyInstance {
       );
     }
     if (req.url === '/login' || req.url === '/api/login') return;
-    if (isAuthed(req)) return;
+    if (await isAuthed(req)) return;
     if (req.url.startsWith('/api/')) return reply.code(401).send({ error: 'unauthorised' });
     return reply.redirect('/login');
   });
@@ -61,13 +89,28 @@ export function buildServer(): FastifyInstance {
 
   app.post<{ Body: { password?: string } }>('/api/login', async (req, reply) => {
     const password = req.body?.password ?? '';
-    if (!env.dashboardPassword || !password || !safeEqual(password, env.dashboardPassword)) {
+    if (!(await passwordMatches(password))) {
       return reply.code(401).send({ error: 'Wrong password' });
     }
-    reply.header(
-      'set-cookie',
-      `${COOKIE}=${sessionToken()}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${env.isProduction ? '; Secure' : ''}`,
-    );
+    reply.header('set-cookie', sessionCookie(await currentSessionToken()));
+    return { ok: true };
+  });
+
+  // Changing the password signs out every other session, because the session
+  // token is derived from the active credential.
+  app.post<{ Body: { current?: string; next?: string } }>('/api/password', async (req, reply) => {
+    const current = req.body?.current ?? '';
+    const next = req.body?.next ?? '';
+    if (!(await passwordMatches(current))) {
+      return reply.code(403).send({ error: 'Current password is wrong' });
+    }
+    if (next.length < MIN_PASSWORD_LENGTH) {
+      return reply.code(400).send({ error: `Use at least ${MIN_PASSWORD_LENGTH} characters` });
+    }
+    await kvSet(PASSWORD_HASH_KEY, hashPassword(next));
+    passwordCache = null;
+    await logEvent(null, 'password.changed', {});
+    reply.header('set-cookie', sessionCookie(await currentSessionToken()));
     return { ok: true };
   });
 

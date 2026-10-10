@@ -143,6 +143,9 @@ export async function logEvent(schoolId: number | null, kind: string, detail?: u
   await sql()`INSERT INTO events (school_id, kind, detail) VALUES (${schoolId}, ${kind}, ${text})`;
 }
 
+/** kv key for a dashboard password changed in the app, stored as a scrypt hash. */
+export const PASSWORD_HASH_KEY = 'dashboard_password_hash';
+
 export async function kvGet(key: string): Promise<string | null> {
   const rows = await sql()<{ value: string }[]>`SELECT value FROM kv WHERE key = ${key}`;
   return rows[0]?.value ?? null;

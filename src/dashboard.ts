@@ -191,6 +191,17 @@ export const DASHBOARD_HTML = String.raw`<!doctype html>
     <button class="ghost" data-test="all">Test everything</button>
     <span id="save-msg" class="ok"></span>
     <p class="muted" id="enc-note"></p>
+
+    <div class="card">
+      <h2>Dashboard password</h2>
+      <label>Current password</label><input type="password" id="pw-current" autocomplete="current-password" />
+      <div class="grid2">
+        <div><label>New password</label><input type="password" id="pw-next" autocomplete="new-password" /></div>
+        <div><label>Repeat new password</label><input type="password" id="pw-repeat" autocomplete="new-password" /></div>
+      </div>
+      <div class="hint">At least 12 characters. Every other signed in browser is signed out. Forgot it? The DASHBOARD_PASSWORD set in Vercel works again after <code>npm run agent -- reset-password</code>.</div>
+      <button class="ghost" id="btn-password">Change password</button><span id="pw-msg" class="ok"></span>
+    </div>
   </div>
 </div>
 
@@ -343,6 +354,14 @@ for (const btn of document.querySelectorAll('[data-test]')) {
 }
 
 $('btn-save').onclick = () => run($('btn-save'), saveSettingsForm);
+
+$('btn-password').onclick = () => run($('btn-password'), async () => {
+  if ($('pw-next').value !== $('pw-repeat').value) throw new Error('The new passwords do not match.');
+  await api('/api/password', { method: 'POST', body: JSON.stringify({ current: $('pw-current').value, next: $('pw-next').value }) });
+  for (const id of ['pw-current', 'pw-next', 'pw-repeat']) $(id).value = '';
+  $('pw-msg').textContent = 'Password changed.';
+  setTimeout(() => { $('pw-msg').textContent = ''; }, 4000);
+});
 $('btn-add').onclick = () => run($('btn-add'), async () => {
   const name = $('f-name').value.trim();
   if (!name) return;
